@@ -30,6 +30,10 @@ jobs:
           pip install -e .
 
       - name: Take snapshot
+        env:
+          # GitHub Actions runners are US-based; fapi.binance.com returns HTTP 451.
+          # Skip Binance until a non-US relay (Cloudflare Worker / EU VPS) is in place.
+          PERP_BASIS_DISABLE_VENUES: binance
         run: python -m perp_basis.snapshot
 
       - name: Commit and push if changed

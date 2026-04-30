@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -16,7 +17,14 @@ from perp_basis.storage import write_snapshot
 
 log = logging.getLogger(__name__)
 
-COLLECTORS = (binance, okx, hyperliquid, yahoo_cme)
+ALL_COLLECTORS = (binance, okx, hyperliquid, yahoo_cme)
+
+# Comma-separated list of venues to skip — used by GitHub Actions because
+# fapi.binance.com returns HTTP 451 to US-located runners.
+_disabled = {v.strip() for v in os.environ.get("PERP_BASIS_DISABLE_VENUES", "").split(",") if v.strip()}
+COLLECTORS = tuple(c for c in ALL_COLLECTORS if c.VENUE not in _disabled)
+if _disabled:
+    log.info("snapshot: disabled venues from env: %s", sorted(_disabled))
 
 
 async def run_once() -> tuple[datetime, list[PriceSnapshot]]:

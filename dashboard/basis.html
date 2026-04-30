@@ -226,6 +226,29 @@
   .product-tag.gold { background: rgba(240, 185, 11, .12); color: #f5c518; }
   .product-tag.wti  { background: rgba(91, 141, 239, .15); color: #7ba3ff; }
 
+  /* ----- carry table ----- */
+  table.carry { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  table.carry th, table.carry td { padding: .65rem .8rem; text-align: left; vertical-align: middle; }
+  table.carry thead th {
+    color: var(--text-2); font-weight: 500; font-size: .72rem;
+    letter-spacing: .08em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    text-align: right;
+  }
+  table.carry thead th.left { text-align: left; }
+  table.carry tbody tr { border-bottom: 1px solid var(--border); transition: background .12s; }
+  table.carry tbody tr:last-child { border-bottom: 0; }
+  table.carry tbody tr:hover { background: rgba(255, 255, 255, .025); }
+  table.carry td.num { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; text-align: right; }
+  table.carry td.net { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; text-align: right; font-weight: 700; font-size: 1rem; }
+  table.carry td.net.pos { color: var(--pos); }
+  table.carry td.net.neg { color: var(--neg); }
+  table.carry td.net.zero { color: var(--text-2); }
+  table.carry td.direction { color: var(--text-2); font-size: .82rem; }
+  table.carry tr.flag-pos { background: rgba(16, 185, 129, .04); }
+  table.carry tr.flag-pos:hover { background: rgba(16, 185, 129, .08); }
+  table.carry tr.flag-neg td { opacity: .55; }
+
   /* ----- footer ----- */
   footer { color: var(--muted); font-size: .75rem; padding: .5rem 0 1.5rem; text-align: center; }
   footer a { color: var(--text-2); text-decoration: none; border-bottom: 1px dotted var(--border-strong); }
@@ -269,7 +292,31 @@
   </div>
 
   <section class="panel">
-    <h2><span class="num">1</span> Basis vs CME</h2>
+    <h2><span class="num">1</span> Implied carry · is the basis a trade?</h2>
+    <p class="desc">Each row converts the current (perp − CME) basis into an annualized return, factoring in funding paid/received over the holding period. Rows are sorted by <strong>net carry %</strong>: green-tinted = net positive (profitable trade after funding), faded = net negative. Days-to-expiry is approximate front-month CME settle (GC ≈ 28th of month, CL ≈ 21st of month). Net carry assumes you hold to CME expiry.</p>
+    <div class="table-wrap">
+      <table class="carry">
+        <thead>
+          <tr>
+            <th class="left">Venue</th>
+            <th class="left">Product</th>
+            <th>Basis (bps)</th>
+            <th>Days to CME</th>
+            <th>Gross carry %</th>
+            <th>Funding %&nbsp;p.a.</th>
+            <th>Net carry %</th>
+            <th class="left">Trade direction</th>
+          </tr>
+        </thead>
+        <tbody id="carry-tbody">
+          <tr><td colspan="8" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">2</span> Basis vs CME · time series</h2>
     <p class="desc">Per-venue basis: <code>(perp_mark − cme_last) / cme_last × 10 000</code>. CME points &gt;1 h stale are dropped — chart goes quiet during CME closures (Fri 21:00 → Sun 22:00 UTC + nightly maintenance).</p>
     <div class="grid-2">
       <div id="chart-basis-gold" class="chart"></div>
@@ -278,7 +325,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">2</span> Perp-vs-Perp basis · 24/7</h2>
+    <h2><span class="num">3</span> Perp-vs-Perp basis · 24/7</h2>
     <p class="desc">All three pairwise basis lines between the crypto venues. Lives through weekends and CME closures. Sign: <code>(A − B) / B × 10 000</code>.</p>
     <div class="grid-2">
       <div id="chart-perpbasis-gold" class="chart"></div>
@@ -287,7 +334,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">3</span> Top dislocation events</h2>
+    <h2><span class="num">4</span> Top dislocation events</h2>
     <p class="desc">50 largest |basis| events in the selected range — answers <em>when</em> and <em>how much</em>.</p>
     <div class="table-wrap">
       <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
@@ -295,7 +342,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">4</span> Funding rate vs basis</h2>
+    <h2><span class="num">5</span> Funding rate vs basis</h2>
     <p class="desc">If funding is doing its job, the cloud should slope: positive funding ↔ positive basis.</p>
     <div class="grid-2">
       <div id="chart-funding-gold" class="chart"></div>
@@ -304,7 +351,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">5</span> Volume regime overlay</h2>
+    <h2><span class="num">6</span> Volume regime overlay</h2>
     <p class="desc">Total perp 24h quote volume (bars) vs mean |basis| across venues (line).</p>
     <div class="grid-2">
       <div id="chart-volume-gold" class="chart"></div>
@@ -376,6 +423,24 @@ const COLOR = { binance: "#f0b90b", okx: "#5b8def", hyperliquid: "#29c481" };
 const VENUE_LABEL = { binance: "Binance", okx: "OKX", hyperliquid: "Hyperliquid", cme_yahoo: "CME" };
 const PRODUCT_LABEL = { gold: "Gold", wti: "WTI Crude" };
 
+// ----- carry math constants -----
+// Funding intervals (hours per period). Binance TradFi perps fund every 4h;
+// OKX every 8h; Hyperliquid every 1h.
+const FUNDING_INTERVAL_HOURS = { binance: 4, okx: 8, hyperliquid: 1 };
+// Approximate CME front-month settle day-of-month. Real expiries vary by a few
+// business days (GC: 3rd-to-last business day of contract month;
+// CL: 3rd business day before the 25th of the prior month). For an annualized
+// estimate this is close enough; days-to-expiry only enters the formula linearly.
+const CME_EXPIRY_DOM = { gold: 28, wti: 21 };
+
+function daysToCMEExpiry(product, asOfDate) {
+  const dom = CME_EXPIRY_DOM[product] ?? 25;
+  const d = new Date(asOfDate);
+  let target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), dom));
+  if (d > target) target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, dom));
+  return Math.max(1, Math.ceil((target - d) / (1000 * 60 * 60 * 24)));
+}
+
 // ----- "Now" panel as KPI tiles -----
 async function renderNow() {
   const grid = document.getElementById("now-grid");
@@ -427,6 +492,62 @@ async function renderNow() {
     html += `</div>`;
   }
   grid.innerHTML = html;
+
+  renderCarry(latest);
+}
+
+// ----- Implied carry table -----
+function renderCarry(latest) {
+  const tbody = document.getElementById("carry-tbody");
+  if (!latest?.rows?.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">No data yet — waiting for first snapshot.</td></tr>`;
+    return;
+  }
+  const cme = {};
+  for (const r of latest.rows) if (r.venue === "cme_yahoo") cme[r.product] = r.last_price;
+
+  const asOf = latest.ts ? new Date(latest.ts) : new Date();
+  const items = [];
+  for (const r of latest.rows) {
+    if (r.venue === "cme_yahoo") continue;
+    const cmePx = cme[r.product];
+    if (!cmePx || !r.mark_price) continue;
+    const basisBps = (r.mark_price - cmePx) / cmePx * 10000;
+    const days = daysToCMEExpiry(r.product, asOf);
+    const grossPct = Math.abs(basisBps) / 10000 * (365 / days) * 100;
+    const longPerp = basisBps < 0;  // perp cheap → buy perp / sell CME
+    const intervalH = FUNDING_INTERVAL_HOURS[r.venue] ?? 8;
+    const fundRaw = r.funding_rate ?? 0;
+    const fundingAnnualPct = fundRaw * (24 / intervalH) * 365 * 100;
+    // Sign of funding to OUR position: long perp → we pay positive funding (so flip sign);
+    // short perp → we receive positive funding.
+    const fundingToUsPct = (longPerp ? -1 : +1) * fundingAnnualPct;
+    const netPct = grossPct + fundingToUsPct;
+    items.push({
+      venue: r.venue, product: r.product,
+      basisBps, days, grossPct, fundingToUsPct, netPct, longPerp,
+    });
+  }
+  items.sort((a, b) => b.netPct - a.netPct);
+
+  const fmtSigned = (x) => (x >= 0 ? "+" : "") + x.toFixed(1) + "%";
+  let html = "";
+  for (const it of items) {
+    const rowCls = it.netPct > 1 ? "flag-pos" : (it.netPct < -1 ? "flag-neg" : "");
+    const netCls = it.netPct > 0.5 ? "pos" : (it.netPct < -0.5 ? "neg" : "zero");
+    const dirText = it.longPerp ? "Long perp / Short CME" : "Short perp / Long CME";
+    html += `<tr class="${rowCls}">
+      <td><span class="venue-tag"><span class="swatch" style="background:${COLOR[it.venue]}"></span>${VENUE_LABEL[it.venue]}</span></td>
+      <td><span class="product-tag ${it.product}">${it.product}</span></td>
+      <td class="num">${fmtBps(it.basisBps)}</td>
+      <td class="num">${it.days}d</td>
+      <td class="num">${it.grossPct.toFixed(1)}%</td>
+      <td class="num">${fmtSigned(it.fundingToUsPct)}</td>
+      <td class="net ${netCls}">${fmtSigned(it.netPct)}</td>
+      <td class="direction">${dirText}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
 }
 
 // ----- Range loader -----
