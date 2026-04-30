@@ -1,0 +1,5 @@
+# latest.json is rewritten by every snapshot. Concurrent cron runs would
+# otherwise produce un-resolvable conflicts. Tell git to always keep "ours"
+# (the version in the runner that's about to push) — it's by definition the
+# newest snapshot. Requires `git config merge.ours.driver true` in the runner.
+data/latest.json merge=ours

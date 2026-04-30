@@ -43,6 +43,9 @@ jobs:
           GIT_COMMITTER_NAME: perp-basis-bot
           GIT_COMMITTER_EMAIL: perp-basis-bot@users.noreply.github.com
         run: |
+          # Enable the `merge=ours` driver referenced in .gitattributes so concurrent
+          # cron runs auto-resolve the latest.json conflict (always keep the newest write).
+          git config merge.ours.driver true
           git add data/
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -50,10 +53,11 @@ jobs:
           fi
           ts=$(date -u +"%Y-%m-%d %H:%M:%SZ")
           git commit -m "snapshot ${ts}"
-          # Retry push on rebase conflicts (concurrent runs)
+          # Use merge (not rebase) so the merge=ours driver is honoured.
           for i in 1 2 3; do
-            git pull --rebase --autostash && git push && exit 0
+            git pull --no-edit --strategy=ort -X ours && git push && exit 0
             echo "push attempt $i failed, retrying..."
+            git merge --abort 2>/dev/null || true
             sleep 5
           done
           echo "push failed after retries" >&2
