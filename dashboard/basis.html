@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Perp Basis — Gold &amp; WTI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #07090f;
+    --bg-2: #0c1018;
+    --surface: #131826;
+    --surface-2: #1a2030;
+    --border: #232a3b;
+    --border-strong: #2e3650;
+    --text: #e6e8ee;
+    --text-2: #a0a8bd;
+    --muted: #6b7385;
+    --accent: #22d3ee;
+    --accent-2: #818cf8;
+    --pos: #10b981;
+    --neg: #ef4444;
+    --warn: #f59e0b;
+    --binance: #f0b90b;
+    --okx: #5b8def;
+    --hyperliquid: #29c481;
+    --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgba(34, 211, 238, .08), transparent 60%),
+      radial-gradient(900px 500px at -10% 30%, rgba(129, 140, 248, .06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+  .container { max-width: 1320px; margin: 0 auto; padding: 1.25rem; }
+
+  /* ----- top bar ----- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(180deg, rgba(34,211,238,.04), transparent);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.25rem;
+  }
+  .brand { display: flex; align-items: center; gap: .9rem; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 10px;
+    background:
+      conic-gradient(from 200deg, var(--accent), var(--accent-2), #f0b90b, var(--accent));
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 18px rgba(34,211,238,.25);
+  }
+  .brand h1 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: .2px; }
+  .brand p { margin: 0; color: var(--text-2); font-size: .8rem; }
+  .live-pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .2rem .6rem; border-radius: 999px;
+    background: rgba(16, 185, 129, .12); color: var(--pos);
+    font-weight: 600; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase;
+    border: 1px solid rgba(16, 185, 129, .25);
+  }
+  .live-pill .dot { width: 6px; height: 6px; background: var(--pos); border-radius: 999px;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, .55); animation: pulse 1.6s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .55); }
+    70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+  .topbar-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .meta { font-size: .8rem; color: var(--text-2); }
+  .meta strong { color: var(--text); font-weight: 500; }
+
+  /* ----- now grid (KPI cards) ----- */
+  .now-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+  @media (max-width: 900px) { .now-grid { grid-template-columns: 1fr; } }
+  .now-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .now-card-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 1rem 1.25rem .75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .now-card-header .product {
+    font-weight: 600; font-size: .8rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .now-card-header .cme {
+    font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum';
+    color: var(--text); font-size: 1.4rem; font-weight: 600;
+  }
+  .now-card-header .cme small { color: var(--muted); font-weight: 400; font-size: .7rem; margin-left: .4rem; letter-spacing: .12em; text-transform: uppercase; }
+  .row {
+    display: grid;
+    grid-template-columns: 1.4fr 1.6fr 1fr 1fr;
+    align-items: center;
+    padding: .7rem 1.25rem;
+    border-top: 1px solid var(--border);
+    gap: .5rem;
+  }
+  .row:first-child { border-top: 0; }
+  .venue-chip {
+    display: inline-flex; align-items: center; gap: .5rem;
+    font-size: .82rem; font-weight: 500; color: var(--text);
+  }
+  .venue-chip .swatch { width: 8px; height: 8px; border-radius: 999px; }
+  .row .px { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; font-weight: 500; }
+  .row .basis { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; font-weight: 600; text-align: right; }
+  .row .funding { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; color: var(--text-2); font-size: .82rem; text-align: right; }
+  .basis.pos { color: var(--pos); }
+  .basis.neg { color: var(--neg); }
+  .basis.zero { color: var(--text-2); }
+
+  /* ----- toolbar ----- */
+  .toolbar {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    padding: .75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1.25rem;
+  }
+  .toolbar label { font-size: .8rem; color: var(--text-2); display: inline-flex; align-items: center; gap: .4rem; }
+  .toolbar input[type="date"] {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .35rem .55rem; font: inherit; font-size: .85rem;
+    color-scheme: dark;
+  }
+  .toolbar input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .preset {
+    background: var(--bg-2); color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .35rem .65rem; font: inherit; font-size: .8rem; cursor: pointer;
+    transition: all .12s ease;
+  }
+  .preset:hover { border-color: var(--border-strong); color: var(--text); }
+  .preset.active { background: rgba(34, 211, 238, .12); border-color: rgba(34, 211, 238, .4); color: var(--accent); }
+  .btn {
+    background: var(--accent); color: #0a0e1a;
+    border: none; border-radius: 8px;
+    padding: .4rem .9rem; font: inherit; font-weight: 600; font-size: .82rem; cursor: pointer;
+    transition: all .12s ease;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .toolbar-spacer { flex: 1; }
+  .status {
+    font-family: 'JetBrains Mono', monospace; font-size: .75rem; color: var(--muted);
+  }
+
+  /* ----- panel / sections ----- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem 1.25rem 1.25rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .panel h2 {
+    margin: 0 0 .25rem;
+    font-size: .9rem; font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--text);
+    display: flex; align-items: center; gap: .55rem;
+  }
+  .panel h2 .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px; padding: 0 .35rem;
+    border-radius: 6px;
+    background: rgba(34, 211, 238, .12);
+    color: var(--accent); font-size: .72rem; font-weight: 700;
+  }
+  .panel .desc { color: var(--text-2); font-size: .8rem; margin: 0 0 .9rem; }
+  .panel code { background: var(--bg-2); padding: 0 .25rem; border-radius: 4px; color: var(--text); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 1000px) { .grid-2 { grid-template-columns: 1fr; } }
+  .chart { min-height: 380px; border-radius: 10px; overflow: hidden; background: var(--bg-2); padding: .25rem; }
+
+  /* ----- events table ----- */
+  .table-wrap { overflow-x: auto; border-radius: 10px; background: var(--bg-2); }
+  table.events { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  table.events th, table.events td { padding: .5rem .75rem; text-align: left; }
+  table.events thead th {
+    color: var(--text-2); font-weight: 500; font-size: .72rem;
+    letter-spacing: .08em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0;
+  }
+  table.events tbody tr { border-bottom: 1px solid var(--border); }
+  table.events tbody tr:last-child { border-bottom: 0; }
+  table.events tbody tr:hover { background: rgba(255, 255, 255, .015); }
+  table.events td.mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
+  table.events td.basis { font-weight: 600; }
+  table.events td.basis.pos { color: var(--pos); }
+  table.events td.basis.neg { color: var(--neg); }
+  .venue-tag {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: .78rem; padding: .15rem .5rem;
+    background: var(--surface-2); border-radius: 999px; border: 1px solid var(--border);
+  }
+  .venue-tag .swatch { width: 6px; height: 6px; border-radius: 999px; }
+  .product-tag {
+    display: inline-flex; padding: .1rem .45rem;
+    border-radius: 4px; font-size: .7rem; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .product-tag.gold { background: rgba(240, 185, 11, .12); color: #f5c518; }
+  .product-tag.wti  { background: rgba(91, 141, 239, .15); color: #7ba3ff; }
+
+  /* ----- footer ----- */
+  footer { color: var(--muted); font-size: .75rem; padding: .5rem 0 1.5rem; text-align: center; }
+  footer a { color: var(--text-2); text-decoration: none; border-bottom: 1px dotted var(--border-strong); }
+  footer a:hover { color: var(--accent); }
+
+  .empty { padding: 2rem; text-align: center; color: var(--text-2); }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1>Perp Basis</h1>
+        <p>Gold &amp; WTI · Binance · OKX · Hyperliquid · CME</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span class="live-pill"><span class="dot"></span> Live</span>
+      <span class="meta">Last snapshot <strong id="now-ts">—</strong></span>
+    </div>
+  </div>
+
+  <div class="now-grid" id="now-grid">
+    <div class="empty">Loading latest snapshot…</div>
+  </div>
+
+  <div class="toolbar">
+    <label>From <input type="date" id="start"></label>
+    <label>To <input type="date" id="end"></label>
+    <button class="preset" data-days="1">24h</button>
+    <button class="preset" data-days="7">7d</button>
+    <button class="preset" data-days="30">30d</button>
+    <button class="preset" data-days="90">90d</button>
+    <button class="btn" id="reload">Reload</button>
+    <span class="toolbar-spacer"></span>
+    <span class="status" id="status">idle</span>
+  </div>
+
+  <section class="panel">
+    <h2><span class="num">1</span> Basis vs CME</h2>
+    <p class="desc">Per-venue basis: <code>(perp_mark − cme_last) / cme_last × 10 000</code>. CME points &gt;1 h stale are dropped — chart goes quiet during CME closures (Fri 21:00 → Sun 22:00 UTC + nightly maintenance).</p>
+    <div class="grid-2">
+      <div id="chart-basis-gold" class="chart"></div>
+      <div id="chart-basis-wti" class="chart"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">2</span> Perp-vs-Perp basis · 24/7</h2>
+    <p class="desc">All three pairwise basis lines between the crypto venues. Lives through weekends and CME closures. Sign: <code>(A − B) / B × 10 000</code>.</p>
+    <div class="grid-2">
+      <div id="chart-perpbasis-gold" class="chart"></div>
+      <div id="chart-perpbasis-wti" class="chart"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">3</span> Top dislocation events</h2>
+    <p class="desc">50 largest |basis| events in the selected range — answers <em>when</em> and <em>how much</em>.</p>
+    <div class="table-wrap">
+      <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">4</span> Funding rate vs basis</h2>
+    <p class="desc">If funding is doing its job, the cloud should slope: positive funding ↔ positive basis.</p>
+    <div class="grid-2">
+      <div id="chart-funding-gold" class="chart"></div>
+      <div id="chart-funding-wti" class="chart"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">5</span> Volume regime overlay</h2>
+    <p class="desc">Total perp 24h quote volume (bars) vs mean |basis| across venues (line).</p>
+    <div class="grid-2">
+      <div id="chart-volume-gold" class="chart"></div>
+      <div id="chart-volume-wti" class="chart"></div>
+    </div>
+  </section>
+
+  <footer>
+    Data: <a id="data-link" target="_blank" rel="noopener">perp-basis</a> · 5-min cron via GitHub Actions · DuckDB-WASM &amp; Plotly · client-side, zero backend
+  </footer>
+
+</div>
+
+<script type="module">
+import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
+
+// =========================================================================
+// CONFIG — edit these two lines after creating the perp-basis GitHub repo
+// =========================================================================
+const GH_USER = "michaelaviv";         // your GitHub username/org
+const GH_REPO = "perp-basis";
+const BRANCH  = "main";
+// =========================================================================
+
+// In local preview the page is served from the repo root via `python -m http.server`,
+// so the dashboard can read Parquet directly from `../data/...` instead of GitHub.
+const IS_LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
+const RAW = IS_LOCAL ? ".." : `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/${BRANCH}`;
+document.getElementById("data-link").href = `https://github.com/${GH_USER}/${GH_REPO}`;
+
+const setStatus = (s) => { document.getElementById("status").textContent = s; };
+
+// ----- DuckDB-WASM bootstrap -----
+setStatus("booting DuckDB…");
+const JSDELIVR = duckdb.getJsDelivrBundles();
+const bundle = await duckdb.selectBundle(JSDELIVR);
+const workerUrl = URL.createObjectURL(
+  new Blob([`importScripts("${bundle.mainWorker}");`], { type: "application/javascript" })
+);
+const worker = new Worker(workerUrl);
+const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+URL.revokeObjectURL(workerUrl);
+const conn = await db.connect();
+setStatus("DuckDB ready");
+
+// ----- helpers -----
+async function fetchJson(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return r.json();
+}
+async function loadParquet(url, name) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  await db.registerFileBuffer(name, buf);
+}
+const fmtBps = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + x.toFixed(1);
+const fmtPx  = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(4);
+const fmtPx2 = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtPct = (x) => (x == null || isNaN(x)) ? "—" : (x * 100 >= 0 ? "+" : "") + (x * 100).toFixed(4) + "%";
+const fmtVol = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toLocaleString(undefined, { maximumFractionDigits: 0 });
+const basisCls = (b) => b == null ? "zero" : (b > 0.5 ? "pos" : (b < -0.5 ? "neg" : "zero"));
+const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const VENUES_PERP = ["binance", "okx", "hyperliquid"];
+const COLOR = { binance: "#f0b90b", okx: "#5b8def", hyperliquid: "#29c481" };
+const VENUE_LABEL = { binance: "Binance", okx: "OKX", hyperliquid: "Hyperliquid", cme_yahoo: "CME" };
+const PRODUCT_LABEL = { gold: "Gold", wti: "WTI Crude" };
+
+// ----- "Now" panel as KPI tiles -----
+async function renderNow() {
+  const grid = document.getElementById("now-grid");
+  let latest;
+  try { latest = await fetchJson(`${RAW}/data/latest.json`); }
+  catch (e) {
+    grid.innerHTML =
+      `<div class="empty">Could not load <code>latest.json</code>: ${escapeHTML(e.message)}<br>
+       <span class="status">Make sure GH_USER is set and the perp-basis repo is public.</span></div>`;
+    return;
+  }
+  document.getElementById("now-ts").textContent = latest.ts ? new Date(latest.ts).toUTCString().replace("GMT", "UTC") : "—";
+
+  const byProductVenue = new Map();
+  const cme = {};
+  for (const r of latest.rows ?? []) {
+    byProductVenue.set(`${r.product}|${r.venue}`, r);
+    if (r.venue === "cme_yahoo") cme[r.product] = r;
+  }
+
+  let html = "";
+  for (const product of ["gold", "wti"]) {
+    const cmeRow = cme[product];
+    const cmePx = cmeRow?.last_price;
+    const ageMin = cmeRow?.data_age_sec != null ? Math.round(cmeRow.data_age_sec / 60) : null;
+    const cmeStaleNote = ageMin != null
+      ? (ageMin > 60 ? `<small style="color:var(--warn)">CME stale ${ageMin}m</small>` : `<small>CME · ${ageMin}m old</small>`)
+      : "";
+    html += `
+      <div class="now-card">
+        <div class="now-card-header">
+          <span class="product">${PRODUCT_LABEL[product]}</span>
+          <span class="cme">${fmtPx2(cmePx)} ${cmeStaleNote}</span>
+        </div>`;
+    for (const venue of VENUES_PERP) {
+      const r = byProductVenue.get(`${product}|${venue}`);
+      const mark = r?.mark_price;
+      const basis = (cmePx && mark) ? ((mark - cmePx) / cmePx * 10000) : null;
+      const fund = r?.funding_rate;
+      const fundCls = fund == null ? "" : (fund >= 0 ? "pos" : "neg");
+      html += `
+        <div class="row">
+          <span class="venue-chip"><span class="swatch" style="background:${COLOR[venue]}"></span>${VENUE_LABEL[venue]}</span>
+          <span class="px mono">${fmtPx2(mark)}</span>
+          <span class="basis mono ${basisCls(basis)}">${fmtBps(basis)} bps</span>
+          <span class="funding mono ${fundCls}">${fmtPct(fund)}</span>
+        </div>`;
+    }
+    html += `</div>`;
+  }
+  grid.innerHTML = html;
+}
+
+// ----- Range loader -----
+let manifest = null;
+async function loadRange(startDate, endDate) {
+  setStatus("fetching manifest…");
+  manifest ??= await fetchJson(`${RAW}/data/manifest.json`);
+  const inRange = manifest.dates.filter(d => d >= startDate && d <= endDate);
+  if (inRange.length === 0) {
+    setStatus("no data in range");
+    return 0;
+  }
+  setStatus(`fetching ${inRange.length} day(s)…`);
+  const reads = await Promise.all(inRange.map(async (d) => {
+    const [y, m, day] = d.split("-");
+    const name = `daily_${d.replace(/-/g, "_")}.parquet`;
+    await loadParquet(`${RAW}/data/daily/${y}/${m}/${day}.parquet`, name);
+    return `SELECT * FROM read_parquet('${name}')`;
+  }));
+  await conn.query(`CREATE OR REPLACE VIEW snapshots AS ${reads.join(" UNION ALL ")}`);
+  setStatus(`${inRange.length} day(s) loaded`);
+  return inRange.length;
+}
+
+// ----- queries -----
+async function rowsOf(sql) {
+  const res = await conn.query(sql);
+  return res.toArray().map(r => r.toJSON());
+}
+
+// ----- Plotly dark theme -----
+const FONT = { family: "Inter, sans-serif", size: 11, color: "#a0a8bd" };
+function darkLayout(extra = {}) {
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    font: FONT,
+    margin: { t: 36, r: 16, l: 50, b: 38 },
+    hoverlabel: { bgcolor: "#131826", bordercolor: "#2e3650", font: { color: "#e6e8ee", family: "Inter" } },
+    xaxis: {
+      gridcolor: "#1a2030", zerolinecolor: "#2e3650", linecolor: "#232a3b",
+      tickfont: FONT, showspikes: true, spikecolor: "#374151", spikethickness: 1, spikemode: "across", spikedash: "dot",
+    },
+    yaxis: {
+      gridcolor: "#1a2030", zerolinecolor: "#2e3650", linecolor: "#232a3b",
+      tickfont: FONT, zeroline: true,
+    },
+    legend: { font: FONT, bgcolor: "rgba(0,0,0,0)", orientation: "h", y: -0.18, x: 0 },
+    title: { font: { family: "Inter", size: 12, color: "#cbd5e1" }, x: 0.01, xanchor: "left" },
+  }, extra);
+}
+const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
+
+// ----- charts -----
+async function renderBasisTs() {
+  const rows = await rowsOf(`
+    WITH cme AS (
+      SELECT ts, product, last_price AS cme_px
+      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+    ), perp AS (
+      SELECT ts, venue, product, mark_price AS perp_px
+      FROM snapshots WHERE venue != 'cme_yahoo'
+    )
+    SELECT p.ts, p.venue, p.product,
+           (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps
+    FROM perp p JOIN cme c USING (ts, product)
+    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+    ORDER BY p.ts
+  `);
+  for (const product of ["gold", "wti"]) {
+    const traces = VENUES_PERP.map(venue => {
+      const filt = rows.filter(r => r.product === product && r.venue === venue);
+      return {
+        x: filt.map(r => new Date(r.ts)),
+        y: filt.map(r => r.basis_bps),
+        name: VENUE_LABEL[venue],
+        mode: "lines",
+        type: "scatter",
+        line: { color: COLOR[venue], width: 1.6, shape: "spline", smoothing: 0.4 },
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> bps<extra>" + VENUE_LABEL[venue] + "</extra>",
+      };
+    });
+    Plotly.react(`chart-basis-${product}`, traces, darkLayout({
+      title: { text: `${PRODUCT_LABEL[product]} · basis vs CME (bps)` },
+      yaxis: Object.assign(darkLayout().yaxis, { title: "" }),
+    }), PLOTLY_OPTS);
+  }
+}
+
+async function renderPerpBasis() {
+  const rows = await rowsOf(`
+    WITH perp AS (
+      SELECT ts, venue, product, mark_price
+      FROM snapshots WHERE venue != 'cme_yahoo' AND mark_price IS NOT NULL
+    )
+    SELECT a.ts, a.product,
+           a.venue || ' − ' || b.venue AS pair,
+           (a.mark_price - b.mark_price) / b.mark_price * 10000.0 AS basis_bps
+    FROM perp a JOIN perp b USING (ts, product)
+    WHERE a.venue < b.venue
+    ORDER BY a.ts
+  `);
+  const PAIR_COLOR = {
+    "binance − hyperliquid": "#22d3ee",
+    "binance − okx":         "#a78bfa",
+    "hyperliquid − okx":     "#fb923c",
+  };
+  for (const product of ["gold", "wti"]) {
+    const pairs = Array.from(new Set(rows.filter(r => r.product === product).map(r => r.pair))).sort();
+    const traces = pairs.map(pair => {
+      const filt = rows.filter(r => r.product === product && r.pair === pair);
+      return {
+        x: filt.map(r => new Date(r.ts)),
+        y: filt.map(r => r.basis_bps),
+        name: pair,
+        mode: "lines",
+        type: "scatter",
+        line: { color: PAIR_COLOR[pair] ?? undefined, width: 1.6, shape: "spline", smoothing: 0.4 },
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> bps<extra>" + pair + "</extra>",
+      };
+    });
+    Plotly.react(`chart-perpbasis-${product}`, traces, darkLayout({
+      title: { text: `${PRODUCT_LABEL[product]} · pairwise perp basis (bps)` },
+    }), PLOTLY_OPTS);
+  }
+}
+
+async function renderTopEvents() {
+  const rows = await rowsOf(`
+    WITH cme AS (
+      SELECT ts, product, last_price AS cme_px
+      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+    ), perp AS (
+      SELECT ts, venue, product, symbol, mark_price AS perp_px,
+             funding_rate, quote_volume_24h
+      FROM snapshots WHERE venue != 'cme_yahoo'
+    )
+    SELECT p.ts, p.product, p.venue, p.perp_px, c.cme_px,
+           (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps,
+           p.funding_rate, p.quote_volume_24h
+    FROM perp p JOIN cme c USING (ts, product)
+    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+    ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
+    LIMIT 50
+  `);
+  let html = `<thead><tr>
+    <th>Timestamp (UTC)</th><th>Product</th><th>Venue</th>
+    <th>Perp</th><th>CME</th><th style="text-align:right">Basis (bps)</th>
+    <th style="text-align:right">Funding</th><th style="text-align:right">24h Quote Vol</th>
+  </tr></thead><tbody>`;
+  if (rows.length === 0) {
+    html += `<tr><td colspan="8" class="empty">No basis events in range (CME may be closed or data not yet captured).</td></tr>`;
+  }
+  for (const r of rows) {
+    html += `<tr>
+      <td class="mono">${new Date(r.ts).toISOString().slice(0, 16).replace("T", " ")}</td>
+      <td><span class="product-tag ${r.product}">${r.product}</span></td>
+      <td><span class="venue-tag"><span class="swatch" style="background:${COLOR[r.venue]}"></span>${VENUE_LABEL[r.venue]}</span></td>
+      <td class="mono">${fmtPx2(r.perp_px)}</td>
+      <td class="mono">${fmtPx2(r.cme_px)}</td>
+      <td class="mono basis ${basisCls(r.basis_bps)}" style="text-align:right">${fmtBps(r.basis_bps)}</td>
+      <td class="mono" style="text-align:right">${fmtPct(r.funding_rate)}</td>
+      <td class="mono" style="text-align:right">${fmtVol(r.quote_volume_24h)}</td>
+    </tr>`;
+  }
+  html += "</tbody>";
+  document.getElementById("events-table").innerHTML = html;
+}
+
+async function renderFundingScatter() {
+  const rows = await rowsOf(`
+    WITH cme AS (
+      SELECT ts, product, last_price AS cme_px
+      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+    ), perp AS (
+      SELECT ts, venue, product, mark_price AS perp_px, funding_rate
+      FROM snapshots WHERE venue != 'cme_yahoo' AND funding_rate IS NOT NULL
+    )
+    SELECT p.venue, p.product, p.funding_rate,
+           (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps
+    FROM perp p JOIN cme c USING (ts, product)
+    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+  `);
+  for (const product of ["gold", "wti"]) {
+    const traces = VENUES_PERP.map(venue => {
+      const filt = rows.filter(r => r.product === product && r.venue === venue);
+      return {
+        x: filt.map(r => r.funding_rate * 100),
+        y: filt.map(r => r.basis_bps),
+        name: VENUE_LABEL[venue],
+        mode: "markers",
+        type: "scatter",
+        marker: { color: COLOR[venue], size: 5, opacity: 0.55, line: { width: 0 } },
+        hovertemplate: "Funding %{x:.4f}%<br>Basis %{y:.1f} bps<extra>" + VENUE_LABEL[venue] + "</extra>",
+      };
+    });
+    Plotly.react(`chart-funding-${product}`, traces, darkLayout({
+      title: { text: `${PRODUCT_LABEL[product]} · funding (%) vs basis (bps)` },
+      xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Funding rate (%)", font: FONT } }),
+      yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Basis (bps)", font: FONT } }),
+    }), PLOTLY_OPTS);
+  }
+}
+
+async function renderVolumeOverlay() {
+  const rows = await rowsOf(`
+    WITH cme AS (
+      SELECT ts, product, last_price AS cme_px
+      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+    ), perp AS (
+      SELECT ts, venue, product, mark_price AS perp_px, quote_volume_24h
+      FROM snapshots WHERE venue != 'cme_yahoo'
+    )
+    SELECT p.ts, p.product,
+           SUM(p.quote_volume_24h) AS total_vol,
+           AVG(ABS((p.perp_px - c.cme_px) / c.cme_px * 10000.0)) AS avg_abs_basis_bps
+    FROM perp p JOIN cme c USING (ts, product)
+    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+    GROUP BY p.ts, p.product
+    ORDER BY p.ts
+  `);
+  for (const product of ["gold", "wti"]) {
+    const filt = rows.filter(r => r.product === product);
+    const xs = filt.map(r => new Date(r.ts));
+    const traces = [
+      {
+        x: xs, y: filt.map(r => r.total_vol),
+        name: "Σ 24h quote vol",
+        type: "bar", yaxis: "y2",
+        marker: { color: "rgba(91, 141, 239, .35)", line: { width: 0 } },
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br>Vol %{y:,.0f}<extra></extra>",
+      },
+      {
+        x: xs, y: filt.map(r => r.avg_abs_basis_bps),
+        name: "mean |basis| (bps)", type: "scatter", mode: "lines",
+        yaxis: "y", line: { color: "#ef4444", width: 1.8, shape: "spline", smoothing: 0.4 },
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> bps<extra>|basis|</extra>",
+      },
+    ];
+    Plotly.react(`chart-volume-${product}`, traces, darkLayout({
+      title: { text: `${PRODUCT_LABEL[product]} · |basis| & total perp volume` },
+      yaxis:  Object.assign(darkLayout().yaxis,  { title: { text: "|basis| (bps)", font: FONT } }),
+      yaxis2: { title: { text: "quote vol", font: FONT }, overlaying: "y", side: "right",
+                showgrid: false, tickfont: FONT, linecolor: "#232a3b" },
+      margin: { t: 36, r: 60, l: 50, b: 38 },
+      barmode: "overlay",
+    }), PLOTLY_OPTS);
+  }
+}
+
+async function renderAll() {
+  try {
+    await renderBasisTs();
+    await renderPerpBasis();
+    await renderTopEvents();
+    await renderFundingScatter();
+    await renderVolumeOverlay();
+    setStatus("ready");
+  } catch (e) {
+    setStatus("query error: " + e.message);
+    console.error(e);
+  }
+}
+
+// ----- range presets -----
+function setRangeDays(days) {
+  const today = new Date();
+  const start = new Date(today); start.setUTCDate(today.getUTCDate() - days);
+  document.getElementById("start").value = start.toISOString().slice(0, 10);
+  document.getElementById("end").value = today.toISOString().slice(0, 10);
+  document.querySelectorAll(".preset").forEach(b =>
+    b.classList.toggle("active", Number(b.dataset.days) === days));
+}
+document.querySelectorAll(".preset").forEach(b => {
+  b.addEventListener("click", async () => {
+    const d = Number(b.dataset.days);
+    setRangeDays(d);
+    const n = await loadRange(document.getElementById("start").value, document.getElementById("end").value);
+    if (n) await renderAll();
+  });
+});
+document.getElementById("reload").addEventListener("click", async () => {
+  document.querySelectorAll(".preset").forEach(b => b.classList.remove("active"));
+  const s = document.getElementById("start").value;
+  const e = document.getElementById("end").value;
+  if (!s || !e) return;
+  const n = await loadRange(s, e);
+  if (n) await renderAll();
+});
+
+// ----- Initial load -----
+await renderNow();
+setRangeDays(7);
+
+if (GH_USER === "REPLACE_ME" && !IS_LOCAL) {
+  setStatus("⚠ Edit GH_USER at the top of basis.html before deploying.");
+} else {
+  try {
+    const n = await loadRange(
+      document.getElementById("start").value,
+      document.getElementById("end").value
+    );
+    if (n) await renderAll();
+  } catch (e) {
+    setStatus("initial load failed: " + e.message);
+  }
+}
+</script>
+</body>
+</html>
