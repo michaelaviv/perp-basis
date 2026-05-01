@@ -405,7 +405,7 @@
 
   <section class="panel">
     <h2><span class="num">5</span> Top dislocation events</h2>
-    <p class="desc">50 largest |basis| events in the selected range — answers <em>when</em> and <em>how much</em>.</p>
+    <p class="desc">Top 10 largest |basis| events in the selected range, ranked by absolute basis. Gross carry annualizes the dislocation against time-to-CME-expiry — a 30 bps basis 60 days from expiry is a much bigger trade than 30 bps with 1 day left.</p>
     <div class="table-wrap">
       <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
     </div>
@@ -895,28 +895,34 @@ async function renderTopEvents() {
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
       AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
     ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
-    LIMIT 50
+    LIMIT 10
   `);
   let html = `<thead><tr>
+    <th style="text-align:right">#</th>
     <th>Timestamp (UTC)</th><th>Product</th><th>Venue</th>
     <th>Perp</th><th>CME</th><th style="text-align:right">Basis (bps)</th>
+    <th style="text-align:right">Gross carry %&nbsp;p.a.</th>
     <th style="text-align:right">Funding</th><th style="text-align:right">24h Quote Vol</th>
   </tr></thead><tbody>`;
   if (rows.length === 0) {
-    html += `<tr><td colspan="8" class="empty">No basis events in range (CME may be closed or data not yet captured).</td></tr>`;
+    html += `<tr><td colspan="10" class="empty">No basis events in range (CME may be closed or data not yet captured).</td></tr>`;
   }
-  for (const r of rows) {
+  rows.forEach((r, i) => {
+    const days = daysToCMEExpiry(r.product, new Date(r.ts));
+    const grossPct = Math.abs(r.basis_bps) / 10000 * (365 / days) * 100;
     html += `<tr>
+      <td class="mono" style="text-align:right;color:var(--muted)">${i + 1}</td>
       <td class="mono">${new Date(r.ts).toISOString().slice(0, 16).replace("T", " ")}</td>
       <td><span class="product-tag ${r.product}">${r.product}</span></td>
       <td><span class="venue-tag"><span class="swatch" style="background:${COLOR[r.venue]}"></span>${VENUE_LABEL[r.venue]}</span></td>
       <td class="mono">${fmtPx2(r.perp_px)}</td>
       <td class="mono">${fmtPx2(r.cme_px)}</td>
       <td class="mono basis ${basisCls(r.basis_bps)}" style="text-align:right">${fmtBps(r.basis_bps)}</td>
+      <td class="mono" style="text-align:right">${grossPct.toFixed(2)}%</td>
       <td class="mono" style="text-align:right">${fmtPct(r.funding_rate)}</td>
       <td class="mono" style="text-align:right">${fmtVol(r.quote_volume_24h)}</td>
     </tr>`;
-  }
+  });
   html += "</tbody>";
   document.getElementById("events-table").innerHTML = html;
 }
