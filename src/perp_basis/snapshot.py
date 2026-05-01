@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import httpx
 
 from perp_basis.collectors import binance, hyperliquid, okx, yahoo_cme
-from perp_basis.manifest import write_latest
+from perp_basis.manifest import write_latest, write_manifest
 from perp_basis.schema import PriceSnapshot
 from perp_basis.storage import write_snapshot
 
@@ -70,6 +70,9 @@ def main() -> int:
         return 1
     path = write_snapshot(rows, ts)
     write_latest(rows)
+    # Rewrite manifest so the dashboard immediately sees today's new snapshot
+    # file (without waiting for the daily compaction at 00:05 UTC).
+    write_manifest()
     log.info("snapshot: wrote %s rows to %s", len(rows), path)
     _print_table(rows)
     return 0

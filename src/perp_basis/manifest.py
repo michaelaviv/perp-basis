@@ -22,7 +22,10 @@ def _json_default(o):
 
 
 def write_manifest(root: Path = DATA_DIR) -> Path:
-    """Scan data/daily/**/*.parquet, write manifest.json with sorted list of dates."""
+    """Scan data/daily/**/*.parquet AND today's data/snapshots/<today>/*.parquet,
+    write manifest.json so the dashboard can find both compacted daily files
+    AND the still-loose snapshots from the current day (uncompacted until
+    00:05 UTC the next morning)."""
     daily_root = root / "daily"
     dates: list[str] = []
     if daily_root.exists():
@@ -35,10 +38,24 @@ def write_manifest(root: Path = DATA_DIR) -> Path:
             except Exception:
                 continue
     dates.sort()
+
+    # Intraday: list today's loose snapshot files so the dashboard can fetch
+    # them in addition to the daily files. These exist between snapshots and
+    # the next compact run.
+    today = datetime.now(timezone.utc).date()
+    today_dir = root / "snapshots" / f"{today.year:04d}" / f"{today.month:02d}" / f"{today.day:02d}"
+    intraday_paths: list[str] = []
+    if today_dir.exists():
+        for p in sorted(today_dir.glob("*.parquet")):
+            # Path relative to root (e.g. "snapshots/2026/05/01/120304.parquet")
+            intraday_paths.append(str(p.relative_to(root)).replace("\\", "/"))
+
     payload = {
         "updated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "dates": dates,
         "count": len(dates),
+        "intraday_date": today.isoformat(),
+        "intraday_files": intraday_paths,
     }
     out = root / "manifest.json"
     out.parent.mkdir(parents=True, exist_ok=True)

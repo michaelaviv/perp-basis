@@ -233,9 +233,23 @@
     color: var(--text-2); font-weight: 500; font-size: .72rem;
     letter-spacing: .08em; text-transform: uppercase;
     border-bottom: 1px solid var(--border); background: var(--surface);
-    text-align: right;
+    text-align: right; vertical-align: bottom;
   }
   table.carry thead th.left { text-align: left; }
+  table.carry thead th .sub {
+    display: block;
+    margin-top: .15rem;
+    font-size: .62rem;
+    font-weight: 400;
+    letter-spacing: .04em;
+    text-transform: none;
+    color: var(--muted);
+  }
+  table.carry thead th .sub.locked { color: var(--pos); }
+  table.carry thead th .sub.variable { color: var(--warn); }
+  /* Subtle column tints, applied via CSS classes on td */
+  table.carry td.col-locked   { background: rgba(16, 185, 129, .04); }
+  table.carry td.col-variable { background: rgba(245, 158, 11, .04); }
   table.carry tbody tr { border-bottom: 1px solid var(--border); transition: background .12s; }
   table.carry tbody tr:last-child { border-bottom: 0; }
   table.carry tbody tr:hover { background: rgba(255, 255, 255, .025); }
@@ -248,6 +262,32 @@
   table.carry tr.flag-pos { background: rgba(16, 185, 129, .04); }
   table.carry tr.flag-pos:hover { background: rgba(16, 185, 129, .08); }
   table.carry tr.flag-neg td { opacity: .55; }
+
+  /* ----- collapsible "how to read" blocks ----- */
+  details.howto { margin: .25rem 0 .25rem; font-size: .82rem; color: var(--text-2); }
+  details.howto > summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .25rem .65rem; border-radius: 6px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--text-2); font-weight: 500; font-size: .78rem; user-select: none;
+    transition: all .12s ease;
+  }
+  details.howto > summary::-webkit-details-marker { display: none; }
+  details.howto > summary::before {
+    content: "▸"; font-size: .65rem; transition: transform .15s ease; color: var(--accent);
+  }
+  details.howto[open] > summary::before { transform: rotate(90deg); }
+  details.howto > summary:hover { color: var(--text); border-color: var(--border-strong); }
+  details.howto > .body {
+    margin-top: .65rem; padding: .75rem .9rem;
+    border-left: 2px solid var(--accent);
+    background: rgba(34, 211, 238, .03);
+    border-radius: 0 8px 8px 0;
+    line-height: 1.55;
+  }
+  details.howto > .body code { background: var(--bg-2); padding: 0 .25rem; border-radius: 4px; color: var(--text); }
+  details.howto > .body p { margin: 0 0 .5rem; }
+  details.howto > .body p:last-child { margin-bottom: 0; }
 
   /* ----- footer ----- */
   footer { color: var(--muted); font-size: .75rem; padding: .5rem 0 1.5rem; text-align: center; }
@@ -293,7 +333,27 @@
 
   <section class="panel">
     <h2><span class="num">1</span> Implied carry · is the basis a trade?</h2>
-    <p class="desc">Each row converts the current (perp − CME) basis into an annualized return, factoring in funding paid/received over the holding period. Rows are sorted by <strong>net carry %</strong>: green-tinted = net positive (profitable trade after funding), faded = net negative. Days-to-expiry is approximate front-month CME settle (GC ≈ 28th of month, CL ≈ 21st of month). Net carry assumes you hold to CME expiry.</p>
+    <p class="desc">Each row converts the current basis into an annualized return after funding. <strong style="color:var(--pos)">Gross carry</strong> is locked at entry by hold-to-expiry; <strong style="color:var(--warn)">funding</strong> is a projection of the current rate. Sorted by net carry %.</p>
+    <details class="howto"><summary>How to read this · formulas</summary>
+      <div class="body">
+        <p><strong>basis_bps</strong> = <code>(perp_mark − cme_last) / cme_last × 10 000</code> — how rich (positive) or cheap (negative) the perp is vs CME.</p>
+        <p><strong>gross carry %</strong> = <code>|basis_bps| / 10 000 × 365 / days_to_expiry × 100</code> — what the basis is worth annualized, assuming it converges to zero at CME expiry. <strong>This is locked</strong> if you execute both legs at quoted prices.</p>
+        <p><strong>funding % p.a.</strong> = <code>funding_rate × 24 / interval_h × 365 × 100</code>, sign-flipped if you're long the perp (longs pay positive funding, shorts collect it). Funding interval: Binance 4h, OKX 8h, Hyperliquid 1h. <strong>This is a projection</strong> — actual realised funding is the integral over the holding period.</p>
+        <p><strong>net carry %</strong> = gross + funding — total annualized return.</p>
+        <p>Days-to-expiry is the approximate front-month CME settle (GC ≈ 28th of month, CL ≈ 21st of month). The <strong>24h Vol ($)</strong> column tells you whether the venue is deep enough to actually trade.</p>
+      </div>
+    </details>
+    <details class="howto"><summary>Caveats · what's locked vs variable</summary>
+      <div class="body">
+        <p><strong>Gross carry (locked)</strong> is guaranteed if you (1) execute both legs at current quoted prices and (2) hold to CME expiry. CME futures must settle to spot at expiry; the perp tracks spot continuously via funding. So the basis spread you enter at converges to zero at expiry — that P&amp;L is structurally locked.</p>
+        <p><strong>Funding % p.a. (variable)</strong> is an extrapolation of <em>today's</em> funding rate. Over a 21-day hold, you'll realise whatever funding actually accrues hour-by-hour. Commodity perps tend to keep funding rates more persistent than crypto pairs (no spot-arb path back), but there is no guarantee — funding can flip sign sharply.</p>
+        <p><strong>What still has to be true for net carry to be realisable:</strong></p>
+        <p>• Both legs filled at quoted prices — slippage on entry/exit erodes the locked basis<br>
+           • You have capital + a CME futures broker for the short leg (1 CL contract = 1,000 barrels ≈ $105k notional; 1 GC contract = 100 oz ≈ $460k)<br>
+           • You can post and maintain initial + maintenance margin on both sides without a margin call forcing an early exit<br>
+           • Counterparty risk on each leg (Hyperliquid HIP-3 markets are newer than native venues)</p>
+      </div>
+    </details>
     <div class="table-wrap">
       <table class="carry">
         <thead>
@@ -302,30 +362,40 @@
             <th class="left">Product</th>
             <th>Basis (bps)</th>
             <th>Days to CME</th>
-            <th>Gross carry %</th>
-            <th>Funding %&nbsp;p.a.</th>
-            <th>Net carry %</th>
+            <th>Gross carry %<span class="sub locked">locked at entry</span></th>
+            <th>Funding %&nbsp;p.a.<span class="sub variable">current snapshot</span></th>
+            <th>Net carry %<span class="sub">locked + projected</span></th>
+            <th>24h Vol ($)</th>
             <th class="left">Trade direction</th>
           </tr>
         </thead>
         <tbody id="carry-tbody">
-          <tr><td colspan="8" class="empty">Loading…</td></tr>
+          <tr><td colspan="9" class="empty">Loading…</td></tr>
         </tbody>
       </table>
     </div>
   </section>
 
   <section class="panel">
-    <h2><span class="num">2</span> Basis vs CME · time series</h2>
-    <p class="desc">Per-venue basis: <code>(perp_mark − cme_last) / cme_last × 10 000</code>. CME points &gt;1 h stale are dropped — chart goes quiet during CME closures (Fri 21:00 → Sun 22:00 UTC + nightly maintenance).</p>
+    <h2><span class="num">2</span> Net carry % through time</h2>
+    <p class="desc">The total — basis convergence + funding. Same math as the Net column in section 1, evaluated at every snapshot. Compare with section 3 below: the gap between net and gross IS the funding contribution.</p>
     <div class="grid-2">
-      <div id="chart-basis-gold" class="chart"></div>
-      <div id="chart-basis-wti" class="chart"></div>
+      <div id="chart-carry-gold" class="chart"></div>
+      <div id="chart-carry-wti" class="chart"></div>
     </div>
   </section>
 
   <section class="panel">
-    <h2><span class="num">3</span> Perp-vs-Perp basis · 24/7</h2>
+    <h2><span class="num">3</span> Gross carry % through time · the locked piece</h2>
+    <p class="desc">Basis-only annualized carry — what's structurally locked in at entry by hold-to-expiry. <strong style="color:var(--pos)">This is the "guaranteed floor" component</strong>. If this line is high and stable, the trade has a durable structural edge regardless of funding.</p>
+    <div class="grid-2">
+      <div id="chart-gross-gold" class="chart"></div>
+      <div id="chart-gross-wti" class="chart"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">4</span> Perp-vs-Perp basis · 24/7</h2>
     <p class="desc">All three pairwise basis lines between the crypto venues. Lives through weekends and CME closures. Sign: <code>(A − B) / B × 10 000</code>.</p>
     <div class="grid-2">
       <div id="chart-perpbasis-gold" class="chart"></div>
@@ -334,7 +404,7 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">4</span> Top dislocation events</h2>
+    <h2><span class="num">5</span> Top dislocation events</h2>
     <p class="desc">50 largest |basis| events in the selected range — answers <em>when</em> and <em>how much</em>.</p>
     <div class="table-wrap">
       <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
@@ -342,8 +412,17 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">5</span> Funding rate vs basis</h2>
-    <p class="desc">If funding is doing its job, the cloud should slope: positive funding ↔ positive basis.</p>
+    <h2><span class="num">6</span> Funding rate vs basis</h2>
+    <p class="desc">Each dot is one snapshot for one venue. X = funding rate annualized (% p.a.), Y = basis vs CME (bps). Tests whether funding is correcting the basis.</p>
+    <details class="howto"><summary>How to read this</summary>
+      <div class="body">
+        <p><strong>The mechanism.</strong> Funding rate is designed to pull the perp price toward the underlying. When perp trades <em>rich</em> (positive basis), too many longs → funding goes <em>positive</em> → longs pay shorts → being long becomes expensive → basis closes. When perp trades <em>cheap</em>, the opposite happens with negative funding. So if funding is working, dots should fall along an <strong>upward-sloping diagonal</strong> (top-right and bottom-left).</p>
+        <p><strong>Steep, tight upward slope</strong> → market is efficient, basis closes fast, carry trades are short-lived (hours, not days).</p>
+        <p><strong>Flat / scattered cloud</strong> → funding isn't tracking basis. The mechanism is broken or laggy. <em>This is where opportunities live</em> — basis can stay open for days because nothing is forcing convergence.</p>
+        <p><strong>Practical use.</strong> Before entering a carry trade from section 1, look at the cloud for that venue: a flat shape says the carry is durable, a steep shape says move fast.</p>
+        <p>With only a few snapshots so far, the chart is sparse. After a few days of cron data it becomes a real regime read.</p>
+      </div>
+    </details>
     <div class="grid-2">
       <div id="chart-funding-gold" class="chart"></div>
       <div id="chart-funding-wti" class="chart"></div>
@@ -351,8 +430,8 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">6</span> Volume regime overlay</h2>
-    <p class="desc">Total perp 24h quote volume (bars) vs mean |basis| across venues (line).</p>
+    <h2><span class="num">7</span> Market depth · 24h quote volume per venue</h2>
+    <p class="desc">Rolling 24h USD volume per venue, over time. Tells you how deep the market actually is — a 50% net carry on a venue trading $10k/day isn't a real trade. Use this to sanity-check section 1.</p>
     <div class="grid-2">
       <div id="chart-volume-gold" class="chart"></div>
       <div id="chart-volume-wti" class="chart"></div>
@@ -423,6 +502,14 @@ const COLOR = { binance: "#f0b90b", okx: "#5b8def", hyperliquid: "#29c481" };
 const VENUE_LABEL = { binance: "Binance", okx: "OKX", hyperliquid: "Hyperliquid", cme_yahoo: "CME" };
 const PRODUCT_LABEL = { gold: "Gold", wti: "WTI Crude" };
 
+// Venues to hide from the dashboard even if historical data exists for them.
+// (Binance is currently disabled in the GitHub Actions workflow because of the US
+// geo-block, but earlier snapshots may still be in the daily Parquet file.)
+const HIDDEN_VENUES = ["binance"];
+const HIDDEN_SQL_LIST = HIDDEN_VENUES.length
+  ? HIDDEN_VENUES.map(v => `'${v}'`).join(", ")
+  : "''";  // never matches anything when list is empty
+
 // ----- carry math constants -----
 // Funding intervals (hours per period). Binance TradFi perps fund every 4h;
 // OKX every 8h; Hyperliquid every 1h.
@@ -454,11 +541,21 @@ async function renderNow() {
   }
   document.getElementById("now-ts").textContent = latest.ts ? new Date(latest.ts).toUTCString().replace("GMT", "UTC") : "—";
 
+  const visibleRows = (latest.rows ?? []).filter(r => !HIDDEN_VENUES.includes(r.venue));
   const byProductVenue = new Map();
   const cme = {};
-  for (const r of latest.rows ?? []) {
+  for (const r of visibleRows) {
     byProductVenue.set(`${r.product}|${r.venue}`, r);
     if (r.venue === "cme_yahoo") cme[r.product] = r;
+  }
+
+  // Active venues per product = those that appeared in this snapshot.
+  // Hides empty rows for any venue we've stopped capturing (e.g., Binance).
+  const activeByProduct = {};
+  for (const r of visibleRows) {
+    if (r.venue === "cme_yahoo") continue;
+    activeByProduct[r.product] ??= new Set();
+    activeByProduct[r.product].add(r.venue);
   }
 
   let html = "";
@@ -475,7 +572,8 @@ async function renderNow() {
           <span class="product">${PRODUCT_LABEL[product]}</span>
           <span class="cme">${fmtPx2(cmePx)} ${cmeStaleNote}</span>
         </div>`;
-    for (const venue of VENUES_PERP) {
+    const activeSet = activeByProduct[product] ?? new Set();
+    for (const venue of VENUES_PERP.filter(v => activeSet.has(v))) {
       const r = byProductVenue.get(`${product}|${venue}`);
       const mark = r?.mark_price;
       const basis = (cmePx && mark) ? ((mark - cmePx) / cmePx * 10000) : null;
@@ -493,14 +591,14 @@ async function renderNow() {
   }
   grid.innerHTML = html;
 
-  renderCarry(latest);
+  renderCarry({ ...latest, rows: visibleRows });
 }
 
 // ----- Implied carry table -----
 function renderCarry(latest) {
   const tbody = document.getElementById("carry-tbody");
   if (!latest?.rows?.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">No data yet — waiting for first snapshot.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">No data yet — waiting for first snapshot.</td></tr>`;
     return;
   }
   const cme = {};
@@ -526,6 +624,7 @@ function renderCarry(latest) {
     items.push({
       venue: r.venue, product: r.product,
       basisBps, days, grossPct, fundingToUsPct, netPct, longPerp,
+      quoteVol24h: r.quote_volume_24h,
     });
   }
   items.sort((a, b) => b.netPct - a.netPct);
@@ -541,9 +640,10 @@ function renderCarry(latest) {
       <td><span class="product-tag ${it.product}">${it.product}</span></td>
       <td class="num">${fmtBps(it.basisBps)}</td>
       <td class="num">${it.days}d</td>
-      <td class="num">${it.grossPct.toFixed(1)}%</td>
-      <td class="num">${fmtSigned(it.fundingToUsPct)}</td>
+      <td class="num col-locked">+${it.grossPct.toFixed(1)}%</td>
+      <td class="num col-variable">${fmtSigned(it.fundingToUsPct)}</td>
       <td class="net ${netCls}">${fmtSigned(it.netPct)}</td>
+      <td class="num">${it.quoteVol24h != null ? "$" + Number(it.quoteVol24h).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td>
       <td class="direction">${dirText}</td>
     </tr>`;
   }
@@ -554,22 +654,46 @@ function renderCarry(latest) {
 let manifest = null;
 async function loadRange(startDate, endDate) {
   setStatus("fetching manifest…");
-  manifest ??= await fetchJson(`${RAW}/data/manifest.json`);
-  const inRange = manifest.dates.filter(d => d >= startDate && d <= endDate);
-  if (inRange.length === 0) {
+  // Always re-fetch the manifest so the dashboard picks up new intraday
+  // snapshots. (Cached in `manifest` only to avoid a tiny double-fetch from the
+  // initial render; explicit reload via the Reload button refreshes it.)
+  manifest = await fetchJson(`${RAW}/data/manifest.json`);
+  const dailyInRange = (manifest.dates ?? []).filter(d => d >= startDate && d <= endDate);
+
+  // Today's still-loose snapshots are listed in manifest.intraday_files. Only
+  // include them if the date range covers manifest.intraday_date.
+  let intradayFiles = [];
+  const today = manifest.intraday_date;
+  if (today && today >= startDate && today <= endDate) {
+    intradayFiles = manifest.intraday_files ?? [];
+  }
+
+  if (dailyInRange.length === 0 && intradayFiles.length === 0) {
     setStatus("no data in range");
     return 0;
   }
-  setStatus(`fetching ${inRange.length} day(s)…`);
-  const reads = await Promise.all(inRange.map(async (d) => {
+
+  setStatus(`fetching ${dailyInRange.length} daily + ${intradayFiles.length} intraday…`);
+  const reads = [];
+
+  // Daily compacted files
+  await Promise.all(dailyInRange.map(async (d) => {
     const [y, m, day] = d.split("-");
     const name = `daily_${d.replace(/-/g, "_")}.parquet`;
     await loadParquet(`${RAW}/data/daily/${y}/${m}/${day}.parquet`, name);
-    return `SELECT * FROM read_parquet('${name}')`;
+    reads.push(`SELECT * FROM read_parquet('${name}')`);
   }));
+
+  // Today's intraday files (each filename like "snapshots/2026/05/01/HHMMSS.parquet")
+  await Promise.all(intradayFiles.map(async (relPath, i) => {
+    const name = `intraday_${i}.parquet`;
+    await loadParquet(`${RAW}/data/${relPath}`, name);
+    reads.push(`SELECT * FROM read_parquet('${name}')`);
+  }));
+
   await conn.query(`CREATE OR REPLACE VIEW snapshots AS ${reads.join(" UNION ALL ")}`);
-  setStatus(`${inRange.length} day(s) loaded`);
-  return inRange.length;
+  setStatus(`loaded ${dailyInRange.length} day(s) + ${intradayFiles.length} intraday`);
+  return reads.length;
 }
 
 // ----- queries -----
@@ -602,37 +726,73 @@ function darkLayout(extra = {}) {
 const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
 
 // ----- charts -----
-async function renderBasisTs() {
+
+// Filter VENUES_PERP to those that actually have data for this product. Avoids
+// rendering empty traces (with their legend entries) for venues we no longer
+// capture.
+function activeVenuesIn(rows, product) {
+  const seen = new Set();
+  for (const r of rows) {
+    if (r.product === product && r.venue && r.venue !== "cme_yahoo") seen.add(r.venue);
+  }
+  return VENUES_PERP.filter(v => seen.has(v));
+}
+
+async function renderCarryTs() {
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
       FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
     ), perp AS (
-      SELECT ts, venue, product, mark_price AS perp_px
-      FROM snapshots WHERE venue != 'cme_yahoo'
+      SELECT ts, venue, product, mark_price AS perp_px, funding_rate
+      FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND mark_price IS NOT NULL
     )
     SELECT p.ts, p.venue, p.product,
-           (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps
+           (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps,
+           p.funding_rate
     FROM perp p JOIN cme c USING (ts, product)
-    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+    WHERE c.cme_px IS NOT NULL
     ORDER BY p.ts
   `);
+
+  // Compute both gross and net carry per row (days_to_expiry depends on row ts).
+  const enriched = rows.map(r => {
+    const days = daysToCMEExpiry(r.product, new Date(r.ts));
+    const grossPct = Math.abs(r.basis_bps) / 10000 * (365 / days) * 100;
+    const longPerp = r.basis_bps < 0;
+    const intervalH = FUNDING_INTERVAL_HOURS[r.venue] ?? 8;
+    const fundRaw = r.funding_rate ?? 0;
+    const fundingAnnualPct = fundRaw * (24 / intervalH) * 365 * 100;
+    const fundingToUsPct = (longPerp ? -1 : +1) * fundingAnnualPct;
+    return {
+      ts: r.ts, venue: r.venue, product: r.product,
+      grossPct, netPct: grossPct + fundingToUsPct,
+    };
+  });
+
+  // Render both gross and net side-by-side per product (sections 2 + 3 share data).
+  drawCarryChart(enriched, "netPct",   "chart-carry", "net carry %",   "basis + funding");
+  drawCarryChart(enriched, "grossPct", "chart-gross", "gross carry %", "locked, basis-only");
+}
+
+function drawCarryChart(enriched, key, idPrefix, label, subtitle) {
   for (const product of ["gold", "wti"]) {
-    const traces = VENUES_PERP.map(venue => {
-      const filt = rows.filter(r => r.product === product && r.venue === venue);
+    const venues = activeVenuesIn(enriched, product);
+    const traces = venues.map(venue => {
+      const filt = enriched.filter(r => r.product === product && r.venue === venue);
       return {
         x: filt.map(r => new Date(r.ts)),
-        y: filt.map(r => r.basis_bps),
+        y: filt.map(r => r[key]),
         name: VENUE_LABEL[venue],
         mode: "lines",
         type: "scatter",
         line: { color: COLOR[venue], width: 1.6, shape: "spline", smoothing: 0.4 },
-        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> bps<extra>" + VENUE_LABEL[venue] + "</extra>",
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}%</b> " + label + "<extra>" + VENUE_LABEL[venue] + "</extra>",
       };
     });
-    Plotly.react(`chart-basis-${product}`, traces, darkLayout({
-      title: { text: `${PRODUCT_LABEL[product]} · basis vs CME (bps)` },
-      yaxis: Object.assign(darkLayout().yaxis, { title: "" }),
+    Plotly.react(`${idPrefix}-${product}`, traces, darkLayout({
+      title: { text: `${PRODUCT_LABEL[product]} · ${label} p.a. (${subtitle})` },
+      yaxis: Object.assign(darkLayout().yaxis, { title: { text: "% p.a.", font: FONT } }),
     }), PLOTLY_OPTS);
   }
 }
@@ -641,7 +801,7 @@ async function renderPerpBasis() {
   const rows = await rowsOf(`
     WITH perp AS (
       SELECT ts, venue, product, mark_price
-      FROM snapshots WHERE venue != 'cme_yahoo' AND mark_price IS NOT NULL
+      FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND mark_price IS NOT NULL
     )
     SELECT a.ts, a.product,
            a.venue || ' − ' || b.venue AS pair,
@@ -683,7 +843,7 @@ async function renderTopEvents() {
     ), perp AS (
       SELECT ts, venue, product, symbol, mark_price AS perp_px,
              funding_rate, quote_volume_24h
-      FROM snapshots WHERE venue != 'cme_yahoo'
+      FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST})
     )
     SELECT p.ts, p.product, p.venue, p.perp_px, c.cme_px,
            (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps,
@@ -724,7 +884,7 @@ async function renderFundingScatter() {
       FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
     ), perp AS (
       SELECT ts, venue, product, mark_price AS perp_px, funding_rate
-      FROM snapshots WHERE venue != 'cme_yahoo' AND funding_rate IS NOT NULL
+      FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND funding_rate IS NOT NULL
     )
     SELECT p.venue, p.product, p.funding_rate,
            (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps
@@ -732,21 +892,24 @@ async function renderFundingScatter() {
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
   `);
   for (const product of ["gold", "wti"]) {
-    const traces = VENUES_PERP.map(venue => {
+    const venues = activeVenuesIn(rows, product);
+    const traces = venues.map(venue => {
       const filt = rows.filter(r => r.product === product && r.venue === venue);
+      const intervalH = FUNDING_INTERVAL_HOURS[venue] ?? 8;
+      const annualMult = (24 / intervalH) * 365 * 100;  // raw funding rate → annualized %
       return {
-        x: filt.map(r => r.funding_rate * 100),
+        x: filt.map(r => r.funding_rate * annualMult),
         y: filt.map(r => r.basis_bps),
         name: VENUE_LABEL[venue],
         mode: "markers",
         type: "scatter",
-        marker: { color: COLOR[venue], size: 5, opacity: 0.55, line: { width: 0 } },
-        hovertemplate: "Funding %{x:.4f}%<br>Basis %{y:.1f} bps<extra>" + VENUE_LABEL[venue] + "</extra>",
+        marker: { color: COLOR[venue], size: 6, opacity: 0.55, line: { width: 0 } },
+        hovertemplate: "Funding %{x:.1f}% p.a.<br>Basis %{y:.1f} bps<extra>" + VENUE_LABEL[venue] + "</extra>",
       };
     });
     Plotly.react(`chart-funding-${product}`, traces, darkLayout({
-      title: { text: `${PRODUCT_LABEL[product]} · funding (%) vs basis (bps)` },
-      xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Funding rate (%)", font: FONT } }),
+      title: { text: `${PRODUCT_LABEL[product]} · funding % p.a. vs basis (bps)` },
+      xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Funding rate (% annualized)", font: FONT } }),
       yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Basis (bps)", font: FONT } }),
     }), PLOTLY_OPTS);
   }
@@ -754,53 +917,36 @@ async function renderFundingScatter() {
 
 async function renderVolumeOverlay() {
   const rows = await rowsOf(`
-    WITH cme AS (
-      SELECT ts, product, last_price AS cme_px
-      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
-    ), perp AS (
-      SELECT ts, venue, product, mark_price AS perp_px, quote_volume_24h
-      FROM snapshots WHERE venue != 'cme_yahoo'
-    )
-    SELECT p.ts, p.product,
-           SUM(p.quote_volume_24h) AS total_vol,
-           AVG(ABS((p.perp_px - c.cme_px) / c.cme_px * 10000.0)) AS avg_abs_basis_bps
-    FROM perp p JOIN cme c USING (ts, product)
-    WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
-    GROUP BY p.ts, p.product
-    ORDER BY p.ts
+    SELECT ts, venue, product, quote_volume_24h
+    FROM snapshots
+    WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND quote_volume_24h IS NOT NULL
+    ORDER BY ts
   `);
   for (const product of ["gold", "wti"]) {
-    const filt = rows.filter(r => r.product === product);
-    const xs = filt.map(r => new Date(r.ts));
-    const traces = [
-      {
-        x: xs, y: filt.map(r => r.total_vol),
-        name: "Σ 24h quote vol",
-        type: "bar", yaxis: "y2",
-        marker: { color: "rgba(91, 141, 239, .35)", line: { width: 0 } },
-        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br>Vol %{y:,.0f}<extra></extra>",
-      },
-      {
-        x: xs, y: filt.map(r => r.avg_abs_basis_bps),
-        name: "mean |basis| (bps)", type: "scatter", mode: "lines",
-        yaxis: "y", line: { color: "#ef4444", width: 1.8, shape: "spline", smoothing: 0.4 },
-        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> bps<extra>|basis|</extra>",
-      },
-    ];
+    const venues = activeVenuesIn(rows, product);
+    const traces = venues.map(venue => {
+      const filt = rows.filter(r => r.product === product && r.venue === venue);
+      return {
+        x: filt.map(r => new Date(r.ts)),
+        y: filt.map(r => r.quote_volume_24h),
+        name: VENUE_LABEL[venue],
+        type: "scatter", mode: "lines",
+        line: { color: COLOR[venue], width: 1.6, shape: "spline", smoothing: 0.4 },
+        fill: "tozeroy",
+        fillcolor: COLOR[venue] + "1a",  // ~10% alpha
+        hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>$%{y:,.0f}</b> 24h<extra>" + VENUE_LABEL[venue] + "</extra>",
+      };
+    });
     Plotly.react(`chart-volume-${product}`, traces, darkLayout({
-      title: { text: `${PRODUCT_LABEL[product]} · |basis| & total perp volume` },
-      yaxis:  Object.assign(darkLayout().yaxis,  { title: { text: "|basis| (bps)", font: FONT } }),
-      yaxis2: { title: { text: "quote vol", font: FONT }, overlaying: "y", side: "right",
-                showgrid: false, tickfont: FONT, linecolor: "#232a3b" },
-      margin: { t: 36, r: 60, l: 50, b: 38 },
-      barmode: "overlay",
+      title: { text: `${PRODUCT_LABEL[product]} · 24h quote volume by venue (USD)` },
+      yaxis: Object.assign(darkLayout().yaxis, { title: { text: "USD", font: FONT }, tickformat: "~s" }),
     }), PLOTLY_OPTS);
   }
 }
 
 async function renderAll() {
   try {
-    await renderBasisTs();
+    await renderCarryTs();
     await renderPerpBasis();
     await renderTopEvents();
     await renderFundingScatter();
