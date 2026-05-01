@@ -63,11 +63,11 @@ def write_manifest(root: Path = DATA_DIR) -> Path:
     return out
 
 
-def write_latest(rows: list[PriceSnapshot], root: Path = DATA_DIR) -> Path:
+def write_latest(rows: list[PriceSnapshot], capture_ts: datetime, root: Path = DATA_DIR) -> Path:
+    # `capture_ts` is the snapshot's wall-clock capture time. Don't derive from
+    # rows[0].ts: CME rows now carry their bar's market time (~15 min stale).
     payload = {
-        "ts": rows[0].ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        if rows
-        else None,
+        "ts": capture_ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         "rows": [asdict(r) for r in rows],
     }
     out = root / "latest.json"

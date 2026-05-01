@@ -776,10 +776,13 @@ function activeVenuesIn(rows, product) {
 }
 
 async function renderCarryTs() {
+  // CME ts = bar market time (post-2026-05 fix); perp ts = live capture time.
+  // ASOF picks the most recent CME bar at-or-before each perp print, dropping
+  // pairs where the CME bar is more than 30 min stale (handles CME closures).
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
-      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+      FROM snapshots WHERE venue = 'cme_yahoo'
     ), perp AS (
       SELECT ts, venue, product, mark_price AS perp_px, funding_rate
       FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND mark_price IS NOT NULL
@@ -787,8 +790,10 @@ async function renderCarryTs() {
     SELECT p.ts, p.venue, p.product,
            (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps,
            p.funding_rate
-    FROM perp p JOIN cme c USING (ts, product)
+    FROM perp p ASOF JOIN cme c
+      ON c.product = p.product AND p.ts >= c.ts
     WHERE c.cme_px IS NOT NULL
+      AND p.ts - c.ts < INTERVAL 30 MINUTE
     ORDER BY p.ts
   `);
 
@@ -876,7 +881,7 @@ async function renderTopEvents() {
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
-      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+      FROM snapshots WHERE venue = 'cme_yahoo'
     ), perp AS (
       SELECT ts, venue, product, symbol, mark_price AS perp_px,
              funding_rate, quote_volume_24h
@@ -885,8 +890,10 @@ async function renderTopEvents() {
     SELECT p.ts, p.product, p.venue, p.perp_px, c.cme_px,
            (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps,
            p.funding_rate, p.quote_volume_24h
-    FROM perp p JOIN cme c USING (ts, product)
+    FROM perp p ASOF JOIN cme c
+      ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+      AND p.ts - c.ts < INTERVAL 30 MINUTE
     ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
     LIMIT 50
   `);
@@ -918,15 +925,17 @@ async function renderFundingScatter() {
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
-      FROM snapshots WHERE venue = 'cme_yahoo' AND data_age_sec < 3600
+      FROM snapshots WHERE venue = 'cme_yahoo'
     ), perp AS (
       SELECT ts, venue, product, mark_price AS perp_px, funding_rate
       FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND funding_rate IS NOT NULL
     )
     SELECT p.venue, p.product, p.funding_rate,
            (p.perp_px - c.cme_px) / c.cme_px * 10000.0 AS basis_bps
-    FROM perp p JOIN cme c USING (ts, product)
+    FROM perp p ASOF JOIN cme c
+      ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
+      AND p.ts - c.ts < INTERVAL 30 MINUTE
   `);
   for (const product of ["gold", "wti"]) {
     const venues = activeVenuesIn(rows, product);

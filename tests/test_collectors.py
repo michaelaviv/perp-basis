@@ -217,4 +217,5 @@ async def test_yahoo_cme_returns_gold_and_wti(monkeypatch, ts):
     assert by_p["gold"].mark_price == pytest.approx(4995.0)
     assert by_p["wti"].mark_price == pytest.approx(75.30)
     assert by_p["gold"].data_age_sec == 60
+    assert by_p["gold"].ts == fake_ts_utc  # bar's market time, not capture wall-clock
     assert by_p["gold"].bid is None  # CME via Yahoo: no book
