@@ -652,16 +652,37 @@ function renderCarry(latest) {
 
 // ----- Range loader -----
 let manifest = null;
+
+// Fetch many files with bounded concurrency so the browser doesn't open
+// hundreds of sockets at once (raw.githubusercontent.com / HTTP/2 is fine in
+// theory but huge fan-outs still trigger sporadic failures). One failed file
+// shouldn't sink the whole batch.
+async function loadFilesLimited(jobs, concurrency = 8) {
+  const results = new Array(jobs.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= jobs.length) return;
+      try {
+        await jobs[i]();
+        results[i] = true;
+      } catch (e) {
+        console.warn("loadFilesLimited: file", i, "failed:", e.message);
+        results[i] = false;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
+  return results;
+}
+
 async function loadRange(startDate, endDate) {
   setStatus("fetching manifest…");
-  // Always re-fetch the manifest so the dashboard picks up new intraday
-  // snapshots. (Cached in `manifest` only to avoid a tiny double-fetch from the
-  // initial render; explicit reload via the Reload button refreshes it.)
+  // Always re-fetch so we pick up the latest intraday snapshots.
   manifest = await fetchJson(`${RAW}/data/manifest.json`);
   const dailyInRange = (manifest.dates ?? []).filter(d => d >= startDate && d <= endDate);
 
-  // Today's still-loose snapshots are listed in manifest.intraday_files. Only
-  // include them if the date range covers manifest.intraday_date.
   let intradayFiles = [];
   const today = manifest.intraday_date;
   if (today && today >= startDate && today <= endDate) {
@@ -674,26 +695,42 @@ async function loadRange(startDate, endDate) {
   }
 
   setStatus(`fetching ${dailyInRange.length} daily + ${intradayFiles.length} intraday…`);
-  const reads = [];
 
-  // Daily compacted files
-  await Promise.all(dailyInRange.map(async (d) => {
+  const dailyNames = dailyInRange.map(d => `daily_${d.replace(/-/g, "_")}.parquet`);
+  const intradayNames = intradayFiles.map((_, i) => `intraday_${i}.parquet`);
+
+  const dailyJobs = dailyInRange.map((d, i) => async () => {
     const [y, m, day] = d.split("-");
-    const name = `daily_${d.replace(/-/g, "_")}.parquet`;
-    await loadParquet(`${RAW}/data/daily/${y}/${m}/${day}.parquet`, name);
-    reads.push(`SELECT * FROM read_parquet('${name}')`);
-  }));
+    await loadParquet(`${RAW}/data/daily/${y}/${m}/${day}.parquet`, dailyNames[i]);
+  });
+  const intradayJobs = intradayFiles.map((relPath, i) => async () => {
+    await loadParquet(`${RAW}/data/${relPath}`, intradayNames[i]);
+  });
 
-  // Today's intraday files (each filename like "snapshots/2026/05/01/HHMMSS.parquet")
-  await Promise.all(intradayFiles.map(async (relPath, i) => {
-    const name = `intraday_${i}.parquet`;
-    await loadParquet(`${RAW}/data/${relPath}`, name);
-    reads.push(`SELECT * FROM read_parquet('${name}')`);
-  }));
+  const dailyOk = await loadFilesLimited(dailyJobs, 4);
+  const intradayOk = await loadFilesLimited(intradayJobs, 8);
 
-  await conn.query(`CREATE OR REPLACE VIEW snapshots AS ${reads.join(" UNION ALL ")}`);
-  setStatus(`loaded ${dailyInRange.length} day(s) + ${intradayFiles.length} intraday`);
-  return reads.length;
+  const okNames = [
+    ...dailyNames.filter((_, i) => dailyOk[i]),
+    ...intradayNames.filter((_, i) => intradayOk[i]),
+  ];
+
+  if (okNames.length === 0) {
+    setStatus("all files failed to load");
+    return 0;
+  }
+
+  // Single multi-file scan via read_parquet([list]). Doing this as a 261-way
+  // UNION ALL crashes DuckDB-WASM with std::bad_cast.
+  const sqlList = okNames.map(n => `'${n}'`).join(", ");
+  await conn.query(
+    `CREATE OR REPLACE VIEW snapshots AS SELECT * FROM read_parquet([${sqlList}])`
+  );
+  const dFailed = dailyOk.filter(x => !x).length;
+  const iFailed = intradayOk.filter(x => !x).length;
+  const failedNote = (dFailed + iFailed) ? ` (${dFailed + iFailed} files skipped)` : "";
+  setStatus(`loaded ${okNames.length} files${failedNote}`);
+  return okNames.length;
 }
 
 // ----- queries -----
