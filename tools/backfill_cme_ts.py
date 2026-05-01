@@ -39,7 +39,13 @@ MARKER = "data/.cme_ts_backfilled"
 
 
 def _shift_cme_rows(table: pa.Table) -> tuple[pa.Table, int]:
-    """Return (new_table, n_cme_rows_shifted)."""
+    """Return (new_table, n_cme_rows_shifted).
+
+    Skips files where CME rows are already at bar time (post-merge captures):
+    detect by checking if any CME row's ts has non-zero seconds/microseconds.
+    Yahoo 1m bars always land on :00 minute boundaries; capture timestamps
+    almost never do (cron + network jitter).
+    """
     venue = table.column("venue")
     cme_mask = pc.equal(venue, "cme_yahoo")
     n_cme = int(pc.sum(pc.cast(cme_mask, pa.int64())).as_py() or 0)
@@ -47,14 +53,25 @@ def _shift_cme_rows(table: pa.Table) -> tuple[pa.Table, int]:
         return table, 0
 
     ts = table.column("ts")
+    # If every CME ts is already on a minute boundary, this file is already
+    # corrected (post-merge capture) — skip.
+    cme_ts_ns = pc.cast(pc.filter(ts, cme_mask), pa.int64()).to_pylist()
+    if all(v % 60_000_000_000 == 0 for v in cme_ts_ns):
+        return table, 0
+
     age_sec = table.column("data_age_sec")
-    # ts is timestamp[ns, UTC]; subtract data_age_sec * 1e9 nanoseconds, but
-    # only on cme rows. Build a per-row offset (ns) that's zero for non-cme.
+    # ts is timestamp[ns, UTC]; for CME rows compute the corrected bar time as
+    # truncate_to_minute(capture_ts - data_age_sec). Truncation matches Yahoo's
+    # 1m bar timestamps (always on :00 boundaries) and lets the minute-boundary
+    # guard above detect already-corrected rows on a re-run.
     age_ns = pc.multiply(pc.cast(age_sec, pa.int64()), pa.scalar(1_000_000_000, pa.int64()))
     offset_ns = pc.if_else(cme_mask, age_ns, pa.scalar(0, pa.int64()))
-    # Shift ts by subtracting offset_ns. Cast ts→int64(ns), subtract, cast back.
     ts_ns = pc.cast(ts, pa.int64())
-    new_ts_ns = pc.subtract(ts_ns, offset_ns)
+    shifted_ns = pc.subtract(ts_ns, offset_ns)
+    minute_ns = pa.scalar(60_000_000_000, pa.int64())
+    truncated_ns = pc.multiply(pc.divide(shifted_ns, minute_ns), minute_ns)
+    # Only truncate the cme rows; leave perp rows at their original ns precision.
+    new_ts_ns = pc.if_else(cme_mask, truncated_ns, ts_ns)
     new_ts = pc.cast(new_ts_ns, pa.timestamp("ns", tz="UTC"))
 
     new_table = table.set_column(table.schema.get_field_index("ts"), "ts", new_ts)
