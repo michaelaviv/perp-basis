@@ -793,7 +793,7 @@ async function renderCarryTs() {
     FROM perp p ASOF JOIN cme c
       ON c.product = p.product AND p.ts >= c.ts
     WHERE c.cme_px IS NOT NULL
-      AND epoch(p.ts) - epoch(c.ts) < 1800
+      AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
     ORDER BY p.ts
   `);
 
@@ -893,7 +893,7 @@ async function renderTopEvents() {
     FROM perp p ASOF JOIN cme c
       ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
-      AND epoch(p.ts) - epoch(c.ts) < 1800
+      AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
     ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
     LIMIT 50
   `);
@@ -935,7 +935,7 @@ async function renderFundingScatter() {
     FROM perp p ASOF JOIN cme c
       ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
-      AND epoch(p.ts) - epoch(c.ts) < 1800
+      AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
   `);
   for (const product of ["gold", "wti"]) {
     const venues = activeVenuesIn(rows, product);
