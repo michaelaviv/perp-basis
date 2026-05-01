@@ -69,7 +69,7 @@ def main() -> int:
         log.error("snapshot: no rows captured from any venue; nothing to write")
         return 1
     path = write_snapshot(rows, ts)
-    write_latest(rows)
+    write_latest(rows, capture_ts=ts)
     # Rewrite manifest so the dashboard immediately sees today's new snapshot
     # file (without waiting for the daily compaction at 00:05 UTC).
     write_manifest()

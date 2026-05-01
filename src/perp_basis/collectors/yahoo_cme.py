@@ -3,6 +3,10 @@
 Delayed ~15 min during RTH. Outside CME RTH (esp. weekends) the most recent bar
 may be stale by hours; `data_age_sec` exposes that staleness so the dashboard
 can drop wildly stale CME points.
+
+`ts` on each row is the bar's market time (so basis joins line up with the perp
+print captured at the same wall-clock moment); `data_age_sec` is the lag
+between that bar time and the snapshot's capture instant.
 """
 
 from __future__ import annotations
@@ -84,7 +88,7 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[PriceSnapshot
             age = max(0, int((ts - bar_ts).total_seconds()))
         rows.append(
             PriceSnapshot(
-                ts=ts,
+                ts=bar_ts if bar_ts is not None else ts,
                 venue=VENUE,
                 product=product,
                 symbol=sym,
