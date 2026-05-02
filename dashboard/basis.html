@@ -145,6 +145,18 @@
     color-scheme: dark;
   }
   .toolbar input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .section-filters {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    margin: 0 0 .75rem 0;
+  }
+  .section-filters label { font-size: .78rem; color: var(--text-2); display: inline-flex; align-items: center; gap: .4rem; }
+  .section-filters select {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .3rem .5rem; font: inherit; font-size: .8rem;
+    color-scheme: dark; cursor: pointer;
+  }
+  .section-filters select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .preset {
     background: var(--bg-2); color: var(--text-2);
     border: 1px solid var(--border); border-radius: 8px;
@@ -406,6 +418,22 @@
   <section class="panel">
     <h2><span class="num">5</span> Top dislocation events</h2>
     <p class="desc">Top 10 largest |basis| events in the selected range, ranked by absolute basis. Gross carry annualizes the dislocation against time-to-CME-expiry — a 30 bps basis 60 days from expiry is a much bigger trade than 30 bps with 1 day left.</p>
+    <div class="section-filters">
+      <label>Venue
+        <select id="events-venue">
+          <option value="">All</option>
+          <option value="okx">OKX</option>
+          <option value="hyperliquid">Hyperliquid</option>
+        </select>
+      </label>
+      <label>Product
+        <select id="events-product">
+          <option value="">All</option>
+          <option value="gold">Gold</option>
+          <option value="wti">WTI Crude</option>
+        </select>
+      </label>
+    </div>
     <div class="table-wrap">
       <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
     </div>
@@ -878,6 +906,12 @@ async function renderPerpBasis() {
 }
 
 async function renderTopEvents() {
+  const venueFilter = document.getElementById("events-venue")?.value || "";
+  const productFilter = document.getElementById("events-product")?.value || "";
+  const ALLOWED_VENUES = new Set(VENUES_PERP.filter(v => !HIDDEN_VENUES.includes(v)));
+  const ALLOWED_PRODUCTS = new Set(Object.keys(PRODUCT_LABEL));
+  const venueClause = ALLOWED_VENUES.has(venueFilter) ? `AND p.venue = '${venueFilter}'` : "";
+  const productClause = ALLOWED_PRODUCTS.has(productFilter) ? `AND p.product = '${productFilter}'` : "";
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
@@ -894,6 +928,8 @@ async function renderTopEvents() {
       ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
       AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
+      ${venueClause}
+      ${productClause}
     ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
     LIMIT 10
   `);
@@ -1027,6 +1063,9 @@ document.querySelectorAll(".preset").forEach(b => {
     if (n) await renderAll();
   });
 });
+for (const id of ["events-venue", "events-product"]) {
+  document.getElementById(id).addEventListener("change", () => { renderTopEvents().catch(e => console.error(e)); });
+}
 document.getElementById("reload").addEventListener("click", async () => {
   document.querySelectorAll(".preset").forEach(b => b.classList.remove("active"));
   const s = document.getElementById("start").value;
