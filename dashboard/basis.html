@@ -813,6 +813,29 @@ function activeVenuesIn(rows, product) {
   return VENUES_PERP.filter(v => seen.has(v));
 }
 
+// Build {x, y} arrays from rows, inserting a null y between consecutive
+// points whose timestamps are >gapMs apart. Plotly draws a visible break
+// across nulls (default `connectgaps: false` for line traces) instead of
+// interpolating across the gap. Prevents misleading straight lines when
+// data is missing for hours/days (e.g., a venue was offline).
+function withGaps(rows, tsKey, valueKey, gapMs = 30 * 60 * 1000) {
+  const sorted = [...rows].sort((a, b) => new Date(a[tsKey]) - new Date(b[tsKey]));
+  const x = [], y = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const t = new Date(sorted[i][tsKey]);
+    if (i > 0) {
+      const prev = new Date(sorted[i - 1][tsKey]);
+      if (t - prev > gapMs) {
+        x.push(new Date((prev.getTime() + t.getTime()) / 2));
+        y.push(null);
+      }
+    }
+    x.push(t);
+    y.push(sorted[i][valueKey]);
+  }
+  return { x, y };
+}
+
 async function renderCarryTs() {
   // CME ts = bar market time (post-2026-05 fix); perp ts = live capture time.
   // ASOF picks the most recent CME bar at-or-before each perp print, dropping
@@ -860,9 +883,9 @@ function drawCarryChart(enriched, key, idPrefix, label, subtitle) {
     const venues = activeVenuesIn(enriched, product);
     const traces = venues.map(venue => {
       const filt = enriched.filter(r => r.product === product && r.venue === venue);
+      const { x, y } = withGaps(filt, "ts", key);
       return {
-        x: filt.map(r => new Date(r.ts)),
-        y: filt.map(r => r[key]),
+        x, y,
         name: VENUE_LABEL[venue],
         mode: "lines",
         type: "scatter",
@@ -899,9 +922,9 @@ async function renderPerpBasis() {
     const pairs = Array.from(new Set(rows.filter(r => r.product === product).map(r => r.pair))).sort();
     const traces = pairs.map(pair => {
       const filt = rows.filter(r => r.product === product && r.pair === pair);
+      const { x, y } = withGaps(filt, "ts", "basis_bps");
       return {
-        x: filt.map(r => new Date(r.ts)),
-        y: filt.map(r => r.basis_bps),
+        x, y,
         name: pair,
         mode: "lines",
         type: "scatter",
@@ -1043,9 +1066,10 @@ async function renderVolumeOverlay() {
     const venues = activeVenuesIn(rows, product);
     const traces = venues.map(venue => {
       const filt = rows.filter(r => r.product === product && r.venue === venue);
+      const gapMs = mode === "daily" ? 2 * 24 * 60 * 60 * 1000 : 30 * 60 * 1000;
+      const { x, y } = withGaps(filt, "ts", "quote_volume_24h", gapMs);
       const base = {
-        x: filt.map(r => new Date(r.ts)),
-        y: filt.map(r => r.quote_volume_24h),
+        x, y,
         name: VENUE_LABEL[venue],
         type: "scatter",
       };
