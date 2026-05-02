@@ -271,6 +271,49 @@
   table.carry td.net.neg { color: var(--neg); }
   table.carry td.net.zero { color: var(--text-2); }
   table.carry td.direction { color: var(--text-2); font-size: .82rem; }
+  .setup-tag {
+    display: inline-block; padding: .15rem .55rem; border-radius: 999px;
+    font-size: .72rem; font-weight: 600; letter-spacing: .02em;
+    border: 1px solid var(--border); cursor: pointer;
+    transition: filter .12s ease;
+  }
+  .setup-tag:hover { filter: brightness(1.2); }
+  .setup-tag.durable { background: rgba(16, 185, 129, .12); border-color: rgba(16, 185, 129, .35); color: #34d399; }
+  .setup-tag.closing { background: rgba(245, 158, 11, .10); border-color: rgba(245, 158, 11, .30); color: #fbbf24; }
+  .setup-tag.thin    { background: rgba(248, 113, 113, .10); border-color: rgba(248, 113, 113, .30); color: #f87171; }
+  .setup-tag.stale   { background: var(--bg-2); color: var(--text-2); }
+
+  /* ----- modal ----- */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(5, 8, 16, .72);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1rem;
+    backdrop-filter: blur(4px);
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-content {
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px;
+    max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+    animation: modalIn .15s ease;
+  }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+  }
+  .modal-title { font-size: .95rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: .6rem; }
+  .modal-close {
+    background: transparent; border: none; color: var(--text-2);
+    font-size: 1.4rem; line-height: 1; cursor: pointer; padding: .15rem .45rem;
+    border-radius: 6px; transition: all .12s ease;
+  }
+  .modal-close:hover { background: var(--bg-2); color: var(--text); }
+  .modal-body { padding: 1rem 1.25rem; font-size: .88rem; line-height: 1.55; color: var(--text-2); }
+  .modal-body p { margin: 0 0 .85rem 0; }
+  .modal-body p:last-child { margin-bottom: 0; }
+  .modal-body p strong { color: var(--text); font-weight: 600; }
+  .modal-body p.warn { color: var(--neg); }
   table.carry tr.flag-pos { background: rgba(16, 185, 129, .04); }
   table.carry tr.flag-pos:hover { background: rgba(16, 185, 129, .08); }
   table.carry tr.flag-neg td { opacity: .55; }
@@ -378,7 +421,7 @@
             <th>Funding %&nbsp;p.a.<span class="sub variable">current snapshot</span></th>
             <th>Net carry %<span class="sub">locked + projected</span></th>
             <th>24h Vol ($)</th>
-            <th class="left">Trade direction</th>
+            <th class="left">Setup <span class="sub">hover for detail</span></th>
           </tr>
         </thead>
         <tbody id="carry-tbody">
@@ -482,6 +525,16 @@
     Data: <a id="data-link" target="_blank" rel="noopener">perp-basis</a> · 5-min cron via GitHub Actions · DuckDB-WASM &amp; Plotly · client-side, zero backend
   </footer>
 
+</div>
+
+<div class="modal-backdrop" id="setup-modal" role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="setup-modal-title"></div>
+      <button class="modal-close" id="setup-modal-close" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" id="setup-modal-body"></div>
+  </div>
 </div>
 
 <script type="module">
@@ -667,12 +720,14 @@ function renderCarry(latest) {
   }
   items.sort((a, b) => b.netPct - a.netPct);
 
-  const fmtSigned = (x) => (x >= 0 ? "+" : "") + x.toFixed(1) + "%";
+  // Stash setup details by row index so the click handler can look them up
+  // without serializing HTML into data-attributes.
+  CARRY_SETUPS = items.map(it => ({ it, setup: analyzeSetup(it) }));
+
   let html = "";
-  for (const it of items) {
+  CARRY_SETUPS.forEach(({ it, setup }, i) => {
     const rowCls = it.netPct > 1 ? "flag-pos" : (it.netPct < -1 ? "flag-neg" : "");
     const netCls = it.netPct > 0.5 ? "pos" : (it.netPct < -0.5 ? "neg" : "zero");
-    const dirText = it.longPerp ? "Long perp / Short CME" : "Short perp / Long CME";
     html += `<tr class="${rowCls}">
       <td><span class="venue-tag"><span class="swatch" style="background:${COLOR[it.venue]}"></span>${VENUE_LABEL[it.venue]}</span></td>
       <td><span class="product-tag ${it.product}">${it.product}</span></td>
@@ -682,11 +737,88 @@ function renderCarry(latest) {
       <td class="num col-variable">${fmtSigned(it.fundingToUsPct)}</td>
       <td class="net ${netCls}">${fmtSigned(it.netPct)}</td>
       <td class="num">${it.quoteVol24h != null ? "$" + Number(it.quoteVol24h).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td>
-      <td class="direction">${dirText}</td>
+      <td><button class="setup-tag ${setup.cls}" data-setup-i="${i}">${setup.tag}</button></td>
     </tr>`;
-  }
+  });
   tbody.innerHTML = html;
 }
+
+let CARRY_SETUPS = [];
+
+function openSetupModal(idx) {
+  const entry = CARRY_SETUPS[idx];
+  if (!entry) return;
+  const { it, setup } = entry;
+  const titleHtml = `<span class="venue-tag"><span class="swatch" style="background:${COLOR[it.venue]}"></span>${VENUE_LABEL[it.venue]}</span> <span class="product-tag ${it.product}">${it.product}</span> <span class="setup-tag ${setup.cls}" style="cursor:default">${setup.tag}</span>`;
+  document.getElementById("setup-modal-title").innerHTML = titleHtml;
+  document.getElementById("setup-modal-body").innerHTML =
+    setup.paras.map(p => `<p${p.warn ? ' class="warn"' : ""}>${p.html}</p>`).join("");
+  document.getElementById("setup-modal").classList.add("open");
+}
+
+function closeSetupModal() {
+  document.getElementById("setup-modal").classList.remove("open");
+}
+
+// Per-row trade-quality verdict + plain-English explanation.
+//
+// The verdict is based primarily on GROSS carry — the basis-only return
+// locked at entry by hold-to-expiry. That's what you actually capture if
+// you enter the trade now and hold; it doesn't depend on funding's future
+// path. Funding is a projection layered on top — it can move every funding
+// interval and is not locked.
+//
+// Liquidity is a hard gate: sub-$100k 24h volume means slippage eats the
+// carry, regardless of how attractive it looks on paper.
+function analyzeSetup(it) {
+  const richer = it.basisBps > 0;
+  const direction = it.longPerp ? "long perp + short CME" : "short perp + long CME";
+  const fundingAbs = Math.abs(it.fundingToUsPct);
+  // Mechanism aligned ⟺ funding is paying us (over-positioned side is exiting,
+  // basis will close from that pressure). Misaligned = funding wrong-way → carry
+  // is durable but we pay funding while we wait.
+  const aligned = it.fundingToUsPct > 0;
+
+  // Each paragraph is { html, warn? } — html is allowed to contain <strong>.
+  // Pre-escape any user-visible numbers via fmt helpers to keep injection-safe.
+  const paras = [
+    { html: `Perp is <strong>${Math.abs(it.basisBps).toFixed(1)} bps ${richer ? "richer" : "cheaper"}</strong> than CME.` },
+    { html: `Trade: <strong>${direction}</strong>.` },
+    { html: `<strong>LOCKED at entry:</strong> +${it.grossPct.toFixed(1)}% gross over ${it.days} days (hold-to-expiry — basis converges by definition). This is what you actually capture.` },
+  ];
+
+  if (fundingAbs >= 1) {
+    paras.push({
+      html: `<strong>PROJECTED funding:</strong> ${fmtSigned(it.fundingToUsPct)} per year (${aligned ? "credits" : "drags"} us). Funding updates every ${FUNDING_INTERVAL_HOURS[it.venue] ?? 8}h on this venue — this is a snapshot, not locked.`,
+    });
+    if (aligned) {
+      paras.push({ html: `Funding mechanism is <strong>working</strong> (paying us). Basis may close earlier than expiry, locking the gross sooner. Trade has a shorter shelf life but funding is a tailwind.` });
+    } else {
+      paras.push({ html: `Funding mechanism is <strong>broken</strong> (going wrong way). Basis won't close from funding pressure → trade can be held to expiry with the locked gross intact, but you pay funding to wait.` });
+    }
+  } else {
+    paras.push({ html: `Funding is ~0% — no projected drag or credit. Pure basis play, no shelf-life pressure.` });
+  }
+
+  // Tag — gross carry magnitude is the primary signal, liquidity is the gate.
+  let cls, tag;
+  if (it.quoteVol24h != null && it.quoteVol24h < 100_000) {
+    cls = "thin"; tag = "Thin";
+    paras.push({ html: `⚠ 24h volume only $${Math.round(it.quoteVol24h).toLocaleString()}. Slippage will eat the carry — not actually tradeable at size.`, warn: true });
+  } else if (Math.abs(it.basisBps) < 5) {
+    cls = "stale"; tag = "Stale";
+  } else if (it.grossPct >= 10) {
+    cls = "durable"; tag = "Strong";
+  } else if (it.grossPct >= 3) {
+    cls = "closing"; tag = "Moderate";
+  } else {
+    cls = "stale"; tag = "Weak";
+  }
+
+  return { cls, tag, paras };
+}
+
+function fmtSigned(x) { return (x >= 0 ? "+" : "") + x.toFixed(1) + "%"; }
 
 // ----- Range loader -----
 let manifest = null;
@@ -1145,6 +1277,20 @@ document.querySelectorAll("#volume-filters .preset").forEach(b => {
     b.classList.add("active");
     renderVolumeOverlay().catch(err => console.error(err));
   });
+});
+
+// Setup-tag modal: delegated click handler since rows re-render on each refresh.
+document.getElementById("carry-tbody").addEventListener("click", (e) => {
+  const btn = e.target.closest(".setup-tag[data-setup-i]");
+  if (!btn) return;
+  openSetupModal(Number(btn.dataset.setupI));
+});
+document.getElementById("setup-modal-close").addEventListener("click", closeSetupModal);
+document.getElementById("setup-modal").addEventListener("click", (e) => {
+  if (e.target.id === "setup-modal") closeSetupModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeSetupModal();
 });
 document.getElementById("reload").addEventListener("click", async () => {
   document.querySelectorAll(".toolbar .preset").forEach(b => b.classList.remove("active"));
