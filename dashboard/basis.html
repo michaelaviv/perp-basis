@@ -422,6 +422,7 @@
       <label>Venue
         <select id="events-venue">
           <option value="">All</option>
+          <option value="binance">Binance</option>
           <option value="okx">OKX</option>
           <option value="hyperliquid">Hyperliquid</option>
         </select>
@@ -542,9 +543,7 @@ const VENUE_LABEL = { binance: "Binance", okx: "OKX", hyperliquid: "Hyperliquid"
 const PRODUCT_LABEL = { gold: "Gold", wti: "WTI Crude" };
 
 // Venues to hide from the dashboard even if historical data exists for them.
-// (Binance is currently disabled in the GitHub Actions workflow because of the US
-// geo-block, but earlier snapshots may still be in the daily Parquet file.)
-const HIDDEN_VENUES = ["binance"];
+const HIDDEN_VENUES = [];
 const HIDDEN_SQL_LIST = HIDDEN_VENUES.length
   ? HIDDEN_VENUES.map(v => `'${v}'`).join(", ")
   : "''";  // never matches anything when list is empty

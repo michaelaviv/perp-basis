@@ -31,9 +31,10 @@ jobs:
 
       - name: Take snapshot
         env:
-          # GitHub Actions runners are US-based; fapi.binance.com returns HTTP 451.
-          # Skip Binance until a non-US relay (Cloudflare Worker / EU VPS) is in place.
-          PERP_BASIS_DISABLE_VENUES: binance
+          # fapi.binance.com returns HTTP 451 to US-located GitHub runners.
+          # Route only the Binance collector through an EU-egress HTTP CONNECT proxy
+          # (Oracle Cloud London VM). OKX / Hyperliquid / Yahoo skip the proxy.
+          BINANCE_PROXY_URL: ${{ secrets.BINANCE_PROXY_URL }}
         run: python -m perp_basis.snapshot
 
       - name: Commit and push if changed

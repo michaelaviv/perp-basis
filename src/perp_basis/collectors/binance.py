@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 
 import httpx
@@ -28,6 +29,16 @@ def _f(v) -> float | None:
 
 
 async def collect(client: httpx.AsyncClient, ts: datetime) -> list[PriceSnapshot]:
+    # Route only Binance through the EU-egress proxy (set in GitHub Actions).
+    # OKX / Hyperliquid / Yahoo are not geo-blocked and skip the proxy.
+    proxy_url = os.environ.get("BINANCE_PROXY_URL")
+    if proxy_url:
+        async with httpx.AsyncClient(proxy=proxy_url, http2=False) as proxied:
+            return await _do_collect(proxied, ts)
+    return await _do_collect(client, ts)
+
+
+async def _do_collect(client: httpx.AsyncClient, ts: datetime) -> list[PriceSnapshot]:
     syms = symbols_for(VENUE)  # {"gold": "XAUUSDT", "wti": "CLUSDT"}
     sym_list = list(syms.values())
     sym_param = json.dumps(sym_list, separators=(",", ":"))
