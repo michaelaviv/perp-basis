@@ -1,5 +1,5 @@
 {
-  "updated": "2026-05-02T00:05:37.652022Z",
+  "updated": "2026-05-02T00:10:46.437485Z",
   "dates": [
     "2026-04-30"
   ],
@@ -7,6 +7,7 @@
   "intraday_date": "2026-05-02",
   "intraday_files": [
     "snapshots/2026/05/02/000056.parquet",
-    "snapshots/2026/05/02/000536.parquet"
+    "snapshots/2026/05/02/000536.parquet",
+    "snapshots/2026/05/02/001044.parquet"
   ]
 }
