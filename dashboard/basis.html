@@ -451,6 +451,11 @@
         <p>With only a few snapshots so far, the chart is sparse. After a few days of cron data it becomes a real regime read.</p>
       </div>
     </details>
+    <div class="section-filters" id="funding-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Window:</span>
+      <button class="preset" data-fund-days="1">24h</button>
+      <button class="preset active" data-fund-days="7">7d</button>
+    </div>
     <div class="grid-2">
       <div id="chart-funding-gold" class="chart"></div>
       <div id="chart-funding-wti" class="chart"></div>
@@ -460,6 +465,12 @@
   <section class="panel">
     <h2><span class="num">7</span> Market depth · 24h quote volume per venue</h2>
     <p class="desc">Rolling 24h USD volume per venue, over time. Tells you how deep the market actually is — a 50% net carry on a venue trading $10k/day isn't a real trade. Use this to sanity-check section 1.</p>
+    <div class="section-filters" id="volume-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Mode:</span>
+      <button class="preset active" data-vol-mode="live">Live (5-min)</button>
+      <button class="preset" data-vol-mode="daily">Daily avg</button>
+      <span style="color: var(--text-2); font-size: .75rem;">Daily avg = mean of 24h-rolling volume per UTC day. Good for spotting weekday vs weekend patterns.</span>
+    </div>
     <div class="grid-2">
       <div id="chart-volume-gold" class="chart"></div>
       <div id="chart-volume-wti" class="chart"></div>
@@ -964,6 +975,17 @@ async function renderTopEvents() {
 }
 
 async function renderFundingScatter() {
+  const activeBtn = document.querySelector("#funding-filters .preset.active");
+  const fundDays = activeBtn ? Number(activeBtn.dataset.fundDays) : 0;
+  let windowClause = "";
+  if (fundDays > 0) {
+    const maxTsRow = (await rowsOf(`SELECT max(ts) AS m FROM snapshots WHERE venue != 'cme_yahoo'`))[0];
+    if (maxTsRow?.m) {
+      const cutoff = new Date(new Date(maxTsRow.m).getTime() - fundDays * 86400000)
+        .toISOString().slice(0, 19).replace("T", " ");
+      windowClause = `AND p.ts::TIMESTAMP >= TIMESTAMP '${cutoff}'`;
+    }
+  }
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
@@ -978,6 +1000,7 @@ async function renderFundingScatter() {
       ON c.product = p.product AND p.ts >= c.ts
     WHERE p.perp_px IS NOT NULL AND c.cme_px IS NOT NULL
       AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
+      ${windowClause}
   `);
   for (const product of ["gold", "wti"]) {
     const venues = activeVenuesIn(rows, product);
@@ -1004,29 +1027,49 @@ async function renderFundingScatter() {
 }
 
 async function renderVolumeOverlay() {
-  const rows = await rowsOf(`
-    SELECT ts, venue, product, quote_volume_24h
-    FROM snapshots
-    WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND quote_volume_24h IS NOT NULL
-    ORDER BY ts
-  `);
+  const activeBtn = document.querySelector("#volume-filters .preset.active");
+  const mode = activeBtn?.dataset.volMode ?? "live";
+  const sql = mode === "daily"
+    ? `SELECT date_trunc('day', ts::TIMESTAMP) AS ts, venue, product,
+              AVG(quote_volume_24h) AS quote_volume_24h
+       FROM snapshots
+       WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND quote_volume_24h IS NOT NULL
+       GROUP BY 1, 2, 3 ORDER BY 1`
+    : `SELECT ts, venue, product, quote_volume_24h
+       FROM snapshots
+       WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND quote_volume_24h IS NOT NULL
+       ORDER BY ts`;
+  const rows = await rowsOf(sql);
   for (const product of ["gold", "wti"]) {
     const venues = activeVenuesIn(rows, product);
     const traces = venues.map(venue => {
       const filt = rows.filter(r => r.product === product && r.venue === venue);
-      return {
+      const base = {
         x: filt.map(r => new Date(r.ts)),
         y: filt.map(r => r.quote_volume_24h),
         name: VENUE_LABEL[venue],
-        type: "scatter", mode: "lines",
+        type: "scatter",
+      };
+      if (mode === "daily") {
+        return {
+          ...base,
+          mode: "lines+markers",
+          line: { color: COLOR[venue], width: 1.8, shape: "linear" },
+          marker: { color: COLOR[venue], size: 7 },
+          hovertemplate: "%{x|%a %Y-%m-%d}<br><b>$%{y:,.0f}</b> avg 24h<extra>" + VENUE_LABEL[venue] + "</extra>",
+        };
+      }
+      return {
+        ...base,
+        mode: "lines",
         line: { color: COLOR[venue], width: 1.6, shape: "spline", smoothing: 0.4 },
         fill: "tozeroy",
-        fillcolor: COLOR[venue] + "1a",  // ~10% alpha
+        fillcolor: COLOR[venue] + "1a",
         hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>$%{y:,.0f}</b> 24h<extra>" + VENUE_LABEL[venue] + "</extra>",
       };
     });
     Plotly.react(`chart-volume-${product}`, traces, darkLayout({
-      title: { text: `${PRODUCT_LABEL[product]} · 24h quote volume by venue (USD)` },
+      title: { text: `${PRODUCT_LABEL[product]} · ${mode === "daily" ? "daily avg" : "rolling"} 24h quote volume (USD)` },
       yaxis: Object.assign(darkLayout().yaxis, { title: { text: "USD", font: FONT }, tickformat: "~s" }),
     }), PLOTLY_OPTS);
   }
@@ -1052,10 +1095,10 @@ function setRangeDays(days) {
   const start = new Date(today); start.setUTCDate(today.getUTCDate() - days);
   document.getElementById("start").value = start.toISOString().slice(0, 10);
   document.getElementById("end").value = today.toISOString().slice(0, 10);
-  document.querySelectorAll(".preset").forEach(b =>
+  document.querySelectorAll(".toolbar .preset").forEach(b =>
     b.classList.toggle("active", Number(b.dataset.days) === days));
 }
-document.querySelectorAll(".preset").forEach(b => {
+document.querySelectorAll(".toolbar .preset").forEach(b => {
   b.addEventListener("click", async () => {
     const d = Number(b.dataset.days);
     setRangeDays(d);
@@ -1066,8 +1109,22 @@ document.querySelectorAll(".preset").forEach(b => {
 for (const id of ["events-venue", "events-product"]) {
   document.getElementById(id).addEventListener("change", () => { renderTopEvents().catch(e => console.error(e)); });
 }
+document.querySelectorAll("#funding-filters .preset").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#funding-filters .preset").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    renderFundingScatter().catch(e => console.error(e));
+  });
+});
+document.querySelectorAll("#volume-filters .preset").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#volume-filters .preset").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    renderVolumeOverlay().catch(err => console.error(err));
+  });
+});
 document.getElementById("reload").addEventListener("click", async () => {
-  document.querySelectorAll(".preset").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".toolbar .preset").forEach(b => b.classList.remove("active"));
   const s = document.getElementById("start").value;
   const e = document.getElementById("end").value;
   if (!s || !e) return;
