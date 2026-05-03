@@ -160,7 +160,7 @@
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
   .chart { width: 100%; height: 360px; background: var(--bg-2); border-radius: 10px; padding: .25rem; }
-  .chart-tall { height: 460px; }
+  .chart-tall { height: 520px; }
 
   .section-filters {
     display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
@@ -656,130 +656,161 @@ function darkLayout(extra = {}) {
 }
 const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
 
-// ----- §2 Smile overlay -----
+// ----- §2 Smile overlay (scrubbable through past 24h) -----
 //
-// Per-venue freshness gate so we don't render a 65h-old CBOE/USO smile next
-// to live pred-market dots and call them comparable. Thresholds match the
-// collector-side skip rules: pred markets (~live), CBOE intraday (~4h),
-// OVX daily index (~30h).
-const SMILE_STALE_THRESHOLD_MS = {
-  cboe_uso: 4 * 3600 * 1000,
-  ovx: 30 * 3600 * 1000,
-  kalshi: 70 * 60 * 1000,
-  polymarket: 70 * 60 * 1000,
-};
-
+// Builds one Plotly frame per snapshot in the past 24h and exposes a slider
+// + Play/Pause so the user can watch how the cross-venue smile evolved (or
+// scrub to a specific moment). On weekends the latest frame may have only
+// pred-market dots — scrub left and CBOE/OVX reappear as you cross back into
+// the previous trading session. That's the correct behavior; a snapshot is
+// either fresh-as-of-capture (collector enforced) or absent.
 async function renderSmile() {
-  // Use the latest snapshot per venue from the loaded range.
+  // Pull all quotes from snapshots in the last 24 hours of the loaded range.
   const rows = await rowsOf(`
-    WITH latest_per_venue AS (
-      SELECT venue, MAX(ts) AS max_ts FROM vol_snapshots GROUP BY venue
-    )
-    SELECT q.* FROM vol_quotes q
-    JOIN latest_per_venue lp
-      ON lp.venue = q.venue AND lp.max_ts = q.ts
-    WHERE q.mid_iv IS NOT NULL
+    SELECT * FROM vol_quotes
+    WHERE mid_iv IS NOT NULL
+      AND ts >= (SELECT max(ts) - INTERVAL '24 hours' FROM vol_quotes)
   `);
 
-  // Reference "now" = the freshest snapshot anywhere in the loaded range.
-  // (We can't use Date.now() because the user might be looking at a back-loaded
-  // window; the freshest snapshot is the right anchor.)
-  const allTs = rows.map(r => new Date(r.ts).getTime());
-  const maxTsMs = allTs.length ? Math.max(...allTs) : Date.now();
-
-  // Track which venues we drop so the chart can call it out.
-  const droppedStale = [];
-
-  const traces = [];
-  for (const venue of VOL_VENUES) {
-    if (venue === "ovx") continue;  // OVX rendered separately as horizontal anchor
-    const filt = rows.filter(r => r.venue === venue);
-    if (!filt.length) continue;
-    // Freshness gate: drop venues whose latest snapshot is older than threshold.
-    const venueTsMs = new Date(filt[0].ts).getTime();
-    const ageMs = maxTsMs - venueTsMs;
-    const thresholdMs = SMILE_STALE_THRESHOLD_MS[venue] ?? 70 * 60 * 1000;
-    if (ageMs > thresholdMs) {
-      droppedStale.push(`${VENUE_LABEL[venue]} (${Math.round(ageMs / 3600000)}h old)`);
-      continue;
-    }
-    filt.sort((a, b) => a.strike - b.strike);
-
-    // Split each venue's quotes into single-sided (above/below) vs range
-    // (lo+hi both set). Plot them as separate traces with different marker
-    // shapes — visually distinguishes structurally different contracts that
-    // would otherwise plot at the same strike (a "between $95-$105" range
-    // mid is $100; a ">$100" market is also $100, but they price different
-    // statistics).
-    const singles = filt.filter(r => !(r.lo_strike != null && r.hi_strike != null));
-    const ranges  = filt.filter(r =>  (r.lo_strike != null && r.hi_strike != null));
-    const sizeFor = (r) => 6 + Math.min(18, Math.log10(1 + (r.volume_24h_usd ?? 0)) * 3.5);
-
-    if (singles.length) {
-      traces.push({
-        x: singles.map(r => r.strike),
-        y: singles.map(r => r.mid_iv * 100),
-        name: VENUE_LABEL[venue],
-        mode: "markers", type: "scatter",
-        marker: { color: COLOR[venue], size: singles.map(sizeFor), opacity: 0.7, symbol: "circle",
-                  line: { color: COLOR[venue], width: 1 } },
-        hovertemplate:
-          "<b>" + VENUE_LABEL[venue] + "</b> · single-sided<br>" +
-          "Strike: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata|$,.0f}<extra></extra>",
-        customdata: singles.map(r => r.volume_24h_usd ?? 0),
-      });
-    }
-    if (ranges.length) {
-      traces.push({
-        x: ranges.map(r => r.strike),
-        y: ranges.map(r => r.mid_iv * 100),
-        name: VENUE_LABEL[venue] + " (range)",
-        mode: "markers", type: "scatter",
-        marker: { color: COLOR[venue], size: ranges.map(sizeFor), opacity: 0.7, symbol: "diamond",
-                  line: { color: COLOR[venue], width: 1.4 } },
-        hovertemplate:
-          "<b>" + VENUE_LABEL[venue] + "</b> · range %{customdata[1]:.1f}–%{customdata[2]:.1f}<br>" +
-          "Mid: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata[0]|$,.0f}<extra></extra>",
-        customdata: ranges.map(r => [r.volume_24h_usd ?? 0, r.lo_strike, r.hi_strike]),
-      });
-    }
+  // Group quotes by snapshot timestamp.
+  const byTs = new Map();
+  for (const r of rows) {
+    if (!byTs.has(r.ts)) byTs.set(r.ts, []);
+    byTs.get(r.ts).push(r);
   }
-  // OVX horizontal reference line — same freshness gate as the per-strike venues.
-  const ovxRows = rows.filter(r => r.venue === "ovx");
-  if (ovxRows.length) {
-    const ovxAgeMs = maxTsMs - new Date(ovxRows[0].ts).getTime();
-    const ovxThreshold = SMILE_STALE_THRESHOLD_MS.ovx;
-    if (ovxAgeMs <= ovxThreshold) {
-      const iv = ovxRows[0].mid_iv * 100;
-      const xs = traces.flatMap(t => t.x);
-      if (xs.length) {
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
+  const tsKeys = Array.from(byTs.keys()).sort();
+  if (!tsKeys.length) {
+    Plotly.react("chart-smile", [], darkLayout({
+      title: { text: "WTI · vol smile · no data in last 24h" }
+    }), PLOTLY_OPTS);
+    return;
+  }
+
+  // Stable trace skeleton — same names/order across frames so Plotly's slider
+  // animation can swap data values cleanly. One trace per (venue, kind):
+  //   - single-sided strikes: circle marker
+  //   - range markets:        diamond marker
+  //   - OVX:                  dashed horizontal line
+  const VENUES_NON_OVX = VOL_VENUES.filter(v => v !== "ovx");
+  const TRACES_SPEC = [];
+  for (const v of VENUES_NON_OVX) {
+    TRACES_SPEC.push({ key: `${v}_single`, venue: v, kind: "single",
+                       name: VENUE_LABEL[v], symbol: "circle" });
+    TRACES_SPEC.push({ key: `${v}_range`, venue: v, kind: "range",
+                       name: VENUE_LABEL[v] + " (range)", symbol: "diamond" });
+  }
+  TRACES_SPEC.push({ key: "ovx_line", venue: "ovx", kind: "line", name: "OVX" });
+
+  const sizeFor = (r) => 6 + Math.min(18, Math.log10(1 + (r.volume_24h_usd ?? 0)) * 3.5);
+
+  function buildTracesForTs(ts) {
+    const tsRows = byTs.get(ts) || [];
+    const traces = [];
+    let xMin = Infinity, xMax = -Infinity;
+
+    for (const spec of TRACES_SPEC) {
+      if (spec.kind === "line") { traces.push(null); continue; }  // OVX placeholder
+      const filtered = tsRows.filter(r => {
+        if (r.venue !== spec.venue) return false;
+        const isRange = r.lo_strike != null && r.hi_strike != null;
+        return spec.kind === "range" ? isRange : !isRange;
+      });
+      for (const r of filtered) {
+        if (r.strike < xMin) xMin = r.strike;
+        if (r.strike > xMax) xMax = r.strike;
+      }
+      if (spec.kind === "range") {
         traces.push({
-          x: [minX, maxX], y: [iv, iv],
-          name: `OVX (${iv.toFixed(1)}%)`,
-          mode: "lines", type: "scatter",
-          line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
-          hoverinfo: "name",
+          x: filtered.map(r => r.strike),
+          y: filtered.map(r => r.mid_iv * 100),
+          name: spec.name,
+          mode: "markers", type: "scatter",
+          marker: { color: COLOR[spec.venue], size: filtered.map(sizeFor), opacity: 0.7,
+                    symbol: spec.symbol, line: { color: COLOR[spec.venue], width: 1.4 } },
+          customdata: filtered.map(r => [r.volume_24h_usd ?? 0, r.lo_strike, r.hi_strike]),
+          hovertemplate: "<b>" + spec.name + "</b><br>Range %{customdata[1]:.1f}–%{customdata[2]:.1f}<br>"
+                         + "Mid: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata[0]|$,.0f}<extra></extra>",
+        });
+      } else {
+        traces.push({
+          x: filtered.map(r => r.strike),
+          y: filtered.map(r => r.mid_iv * 100),
+          name: spec.name,
+          mode: "markers", type: "scatter",
+          marker: { color: COLOR[spec.venue], size: filtered.map(sizeFor), opacity: 0.7,
+                    symbol: spec.symbol, line: { color: COLOR[spec.venue], width: 1 } },
+          customdata: filtered.map(r => r.volume_24h_usd ?? 0),
+          hovertemplate: "<b>" + spec.name + "</b><br>K $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata|$,.0f}<extra></extra>",
         });
       }
-    } else {
-      droppedStale.push(`OVX (${Math.round(ovxAgeMs / 3600000)}h old)`);
     }
+    // Now fill in OVX (we needed xMin/xMax from the other traces first).
+    const ovxRow = tsRows.find(r => r.venue === "ovx");
+    const ovxIdx = traces.findIndex(t => t === null);
+    if (ovxRow && Number.isFinite(xMin)) {
+      const iv = ovxRow.mid_iv * 100;
+      traces[ovxIdx] = {
+        x: [xMin, xMax], y: [iv, iv],
+        name: `OVX (${iv.toFixed(1)}%)`,
+        mode: "lines", type: "scatter",
+        line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
+        hoverinfo: "name",
+      };
+    } else {
+      traces[ovxIdx] = { x: [], y: [], name: "OVX (n/a)", mode: "lines", type: "scatter",
+                        line: { color: COLOR.ovx, width: 1.6, dash: "dash" } };
+    }
+    return traces;
   }
 
-  // Title surfaces dropped venues so the user knows the smile is missing legs
-  // (rather than wondering why CBOE isn't showing on a Sunday).
-  const titleBase = "WTI · vol smile by strike (%)";
-  const titleSuffix = droppedStale.length
-    ? `<br><span style='color:#f59e0b;font-size:.78rem'>⚠ excluded as stale: ${droppedStale.join(", ")}</span>`
-    : "";
-  Plotly.react("chart-smile", traces, darkLayout({
-    title: { text: titleBase + titleSuffix },
-    margin: { t: droppedStale.length ? 56 : 36, r: 16, l: 50, b: 38 },
+  const frames = tsKeys.map(ts => ({ name: ts, data: buildTracesForTs(ts) }));
+  const initialFrame = frames[frames.length - 1];  // start at latest
+
+  // Slider step labels: short HH:MM for compact display.
+  const labelFor = (ts) => {
+    const d = new Date(ts);
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}Z`;
+  };
+  const sliderSteps = tsKeys.map(ts => ({
+    label: labelFor(ts),
+    method: "animate",
+    args: [[ts], { frame: { duration: 0, redraw: true }, mode: "immediate", transition: { duration: 0 } }],
+  }));
+
+  const layout = darkLayout({
+    title: { text: `WTI · vol smile by strike (%) — scrub the slider for past 24h (${frames.length} snapshots)` },
+    margin: { t: 36, r: 16, l: 50, b: 110 },  // extra bottom space for slider + buttons
     xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Strike ($)", font: FONT } }),
     yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Implied vol (% annualized)", font: FONT }, ticksuffix: "%" }),
-  }), PLOTLY_OPTS);
+    sliders: [{
+      active: tsKeys.length - 1,
+      steps: sliderSteps,
+      currentvalue: { prefix: "Snapshot: ", visible: true, xanchor: "left", font: FONT },
+      pad: { t: 30, b: 0 },
+      len: 0.86, x: 0.10, y: -0.18,
+      bgcolor: "#232a3b", bordercolor: "#2e3650",
+      tickcolor: "#3a4356",
+      font: { color: "#a0a8bd", size: 10 },
+      activebgcolor: "#22d3ee",
+    }],
+    updatemenus: [{
+      type: "buttons", direction: "left", showactive: false,
+      x: 0.0, y: -0.18, xanchor: "left", yanchor: "top",
+      pad: { t: 30, b: 0 },
+      bgcolor: "#1a2030", bordercolor: "#2e3650",
+      font: { color: "#a0a8bd", size: 10 },
+      buttons: [
+        { label: "▶", method: "animate",
+          args: [null, { frame: { duration: 700, redraw: true }, fromcurrent: true,
+                          transition: { duration: 200 } }] },
+        { label: "❚❚", method: "animate",
+          args: [[null], { frame: { duration: 0, redraw: false }, mode: "immediate" }] },
+      ],
+    }],
+  });
+
+  await Plotly.react("chart-smile", initialFrame.data, layout, PLOTLY_OPTS);
+  await Plotly.addFrames("chart-smile", frames);
 }
 
 // Helper: pick the ATM IV (strike closest to underlying spot) per snapshot+venue.
