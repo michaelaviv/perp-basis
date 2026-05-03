@@ -402,6 +402,18 @@ const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<
 const fmtIv = (x) => (x == null || isNaN(x)) ? "—" : (x * 100).toFixed(1) + "%";
 const fmtUsd = (x) => (x == null || isNaN(x)) ? "—" : "$" + Number(x).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
+// Tradeability gate. The IV-spread signal is meaningless if the venue's 24h
+// notional can't absorb a real-size order at the printed mid. $1k is "real
+// money traded today"; $10k is "you can probably enter at mid".
+const LIQ_TRADEABLE_USD = 10_000;
+const LIQ_THIN_USD = 1_000;
+function liqTier(usd) {
+  if (usd == null || isNaN(usd)) return { label: "vol unknown",  color: "#6b7280", tradeable: false };
+  if (usd >= LIQ_TRADEABLE_USD)   return { label: "24h vol " + fmtUsd(usd) + " · tradeable",   color: "#29c481", tradeable: true  };
+  if (usd >= LIQ_THIN_USD)        return { label: "24h vol " + fmtUsd(usd) + " · thin",        color: "#f59e0b", tradeable: true  };
+  return                                 { label: "24h vol " + fmtUsd(usd) + " · untradeable", color: "#ef4444", tradeable: false };
+}
+
 const VOL_VENUES = ["cboe_uso", "ovx", "kalshi", "polymarket"];
 const COLOR = {
   cboe_uso:   "#29c481",  // green — TradFi reference (matches Hyperliquid in basis.html)
@@ -431,6 +443,64 @@ function isCboeOpen(ts) {
   return m >= 9 * 60 + 30 && m <= 16 * 60 + 15;
 }
 const STALE_OUTSIDE_CBOE_HOURS = new Set(["cboe_uso", "ovx"]);
+
+// ----- Probability-math helpers (used by §4) -----
+// Goal: convert every venue's quote into a single common quantity —
+// P(S_T > K), the risk-neutral probability that crude is above strike K
+// at time T. Pred markets give this directly; option chains give it via
+// Breeden-Litzenberger (digital call ≈ −∂C/∂K); OVX gives it via the
+// lognormal CDF assuming σ = OVX. Comparing in probability space
+// side-steps the IV-inversion ambiguities that plague vol-pt comparisons.
+
+// Standard normal CDF (Abramowitz-Stegun, accurate to ~1.5e-7).
+function _normCdf(x) {
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x) / Math.SQRT2;
+  const t = 1.0 / (1.0 + p * ax);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-ax * ax);
+  return 0.5 * (1.0 + sign * y);
+}
+
+// Black-Scholes call price under the forward measure (no discount; F is the forward).
+function _bsCallForward(F, K, T, sigma) {
+  if (sigma <= 0 || T <= 0) return Math.max(0, F - K);
+  const sqrtT = Math.sqrt(T);
+  const d1 = (Math.log(F / K) + 0.5 * sigma * sigma * T) / (sigma * sqrtT);
+  const d2 = d1 - sigma * sqrtT;
+  return F * _normCdf(d1) - K * _normCdf(d2);
+}
+
+// Lognormal P(S_T > K) given σ (used for OVX reference leg).
+function probAboveLognormal(F, K, T, sigma) {
+  if (!Number.isFinite(F) || !Number.isFinite(K) || !Number.isFinite(T) || !Number.isFinite(sigma)) return null;
+  if (F <= 0 || K <= 0 || T <= 0 || sigma <= 0) return null;
+  const d2 = (Math.log(F / K) - 0.5 * sigma * sigma * T) / (sigma * Math.sqrt(T));
+  return _normCdf(d2);
+}
+
+// Breeden-Litzenberger digital call from the option chain at strike K, tenor T.
+// Approximates −∂C/∂K via central finite difference between adjacent strikes
+// straddling K. Each call price is computed from its strike's IV (BS forward).
+// Returns null if K is outside the chain's strike range.
+function probAboveCboeChain(quotes, F, T, K) {
+  if (!quotes || quotes.length < 2) return null;
+  const xs = quotes
+    .filter(q => q.mid_iv != null && q.strike != null && q.mid_iv > 0)
+    .map(q => ({ K: q.strike, sigma: q.mid_iv }))
+    .sort((a, b) => a.K - b.K);
+  if (xs.length < 2 || K < xs[0].K || K > xs[xs.length - 1].K) return null;
+  let i = 0;
+  while (i < xs.length - 1 && xs[i + 1].K <= K) i++;
+  if (i >= xs.length - 1) i = xs.length - 2;
+  const lo = xs[i], hi = xs[i + 1];
+  const C_lo = _bsCallForward(F, lo.K, T, lo.sigma);
+  const C_hi = _bsCallForward(F, hi.K, T, hi.sigma);
+  // digital ≈ -(C(K+) − C(K−)) / (K+ − K−)  =  (C(K−) − C(K+)) / (K+ − K−)
+  const digital = (C_lo - C_hi) / (hi.K - lo.K);
+  return Math.max(0, Math.min(1, digital));
+}
 
 // Insert null y between consecutive points >gapMs apart so Plotly draws a
 // visible break instead of interpolating across a capture pause.
@@ -531,12 +601,13 @@ async function renderNow() {
     if (info?.isRange) {
       strikeNote += ` <span title="ATM picked from a range market — IV is the smile midpoint, not a single-strike quote" style="color:var(--text-2);font-size:.7rem">[range]</span>`;
     }
+    const liq = liqTier(r.total_volume_24h_usd);
     return `
       <div class="vol-card">
         <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
         <div class="iv">${fmtIv(info?.iv)}</div>
         <div class="meta-line">${dteText} · ${fmtAge(r.data_age_sec)}${strikeNote}</div>
-        <div class="vol24">${r.total_volume_24h_usd != null ? "24h vol " + fmtUsd(r.total_volume_24h_usd) : ""}</div>
+        <div class="vol24" style="color:${liq.color}">${liq.label}</div>
       </div>`;
   }).join("");
 
@@ -547,12 +618,20 @@ async function renderNow() {
   const headlineParts = [];
   if (cboeIv != null) {
     for (const v of ["kalshi", "polymarket"]) {
-      const iv = atmFor(byVenue.get(v));
+      const r = byVenue.get(v);
+      const iv = atmFor(r);
       if (iv == null) continue;
       const gap = (iv - cboeIv) * 100;
       const sign = gap >= 0 ? "+" : "";
       const cls = gap >= 0 ? "pos" : "neg";
-      headlineParts.push(`${VENUE_LABEL[v]} <strong style="color:var(--${cls})">${sign}${gap.toFixed(1)} vp</strong>`);
+      // Strike through and grey out gaps from venues without enough 24h
+      // notional to be tradeable — a +20vp gap on $13 of volume is noise,
+      // not signal, and shouldn't shout at the top of the dashboard.
+      const liq = liqTier(r.total_volume_24h_usd);
+      const part = `${VENUE_LABEL[v]} <strong style="color:var(--${cls})">${sign}${gap.toFixed(1)} vp</strong>`;
+      headlineParts.push(liq.tradeable
+        ? part
+        : `<span title="${liq.label} — gap is below tradeable size; treat as noise" style="opacity:.45;text-decoration:line-through">${part}</span>`);
     }
   }
   const gapHtml = headlineParts.length
