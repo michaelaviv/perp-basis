@@ -123,6 +123,22 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
 
     if iv is None or iv != iv:  # NaN
         return None
+    # Sanity band — drop inversion artifacts outside any plausible vol regime.
+    if iv < 0.05 or iv > 2.5:
+        return None
+    # Liquidity sanity: skip quotes with bid-ask spread > 50% of midpoint.
+    # Prediction markets are inherently wide-spread, so we set this looser
+    # than for option chains. The IV-range gate above catches the true
+    # garbage; this just trims the worst illiquid wings.
+    bid = market.get("bestBid")
+    ask = market.get("bestAsk")
+    try:
+        if bid is not None and ask is not None and prob > 0:
+            spread = float(ask) - float(bid)
+            if spread / prob > 0.50:
+                return None
+    except (TypeError, ValueError):
+        pass
 
     vol24 = market.get("volume24hr")
     notional_usd = float(vol24) if vol24 is not None else None

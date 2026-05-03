@@ -156,12 +156,24 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
                 continue
             if side == "P" and k_uso > uso_spot:
                 continue
+            # Sanity band on IV — Yahoo's impliedVolatility for very deep OTM
+            # strikes is unreliable (option worth pennies, spread huge relative
+            # to price → BS inversion explodes). [5%, 250%] is the same band we
+            # use everywhere else.
+            if iv < 0.05 or iv > 2.5:
+                continue
             k_cl = k_uso * ratio
             bid = _f(row.get("bid"))
             ask = _f(row.get("ask"))
             last = _f(row.get("lastPrice"))
             vol = _f(row.get("volume"))
             oi = _f(row.get("openInterest"))
+            # Liquidity gate: skip strikes with no real market (bid = 0 means
+            # no resting buy orders → the IV Yahoo computed is from stale or
+            # one-sided data; same goes for zero volume AND zero OI = dead
+            # contract).
+            if (bid is None or bid <= 0) and (vol is None or vol == 0) and (oi is None or oi == 0):
+                continue
             # Notional 24h volume in USD = contracts * lastPrice * 100 (US options multiplier).
             notional = None
             if vol is not None and last is not None:

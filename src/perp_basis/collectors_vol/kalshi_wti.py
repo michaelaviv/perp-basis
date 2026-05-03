@@ -113,6 +113,16 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     prob = _mid_prob(market)
     if prob is None or not (0.0 < prob < 1.0):
         return None
+    # Liquidity sanity: drop quotes where the bid-ask spread is so wide relative
+    # to the midpoint that the "price" is effectively unknown. On Kalshi, this
+    # catches body-of-distribution markets where both sides hit the $0.01
+    # minimum-tick floor — they all look like prob ≈ 0.03 regardless of the
+    # underlying, and the inversion produces a misleading V-shape on the smile.
+    bid_c, ask_c = market.get("yes_bid"), market.get("yes_ask")
+    if bid_c is not None and ask_c is not None and prob > 0:
+        spread = (ask_c - bid_c) / 100.0  # convert cents → dollars
+        if spread / prob > 0.25:
+            return None
     strike_type = market.get("strike_type")
     floor = market.get("floor_strike")
     cap = market.get("cap_strike")
@@ -136,6 +146,12 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
         return None
 
     if iv is None or iv != iv:  # NaN check
+        return None
+    # Reject IVs far outside any plausible WTI vol regime — typical 10-150%,
+    # so [5%, 250%] is a generous sanity band. Anything outside is an
+    # inversion artifact (e.g. a tiny-prob body market that math thinks
+    # implies σ < 5%).
+    if iv < 0.05 or iv > 2.5:
         return None
 
     bid_px = market.get("yes_bid")
