@@ -245,6 +245,7 @@
     <div class="body">
       <p><strong>The thesis.</strong> Implied volatility derived from prediction markets should converge to (but in practice often diverges from) implied vol on the underlying option chain. When prediction-market IV is meaningfully richer than CBOE option IV — especially in the wings — that's a tradeable dislocation: sell the rich vol on the prediction market, buy the cheaper vol on the option chain.</p>
       <p><strong>CBOE/USO</strong> — the CBOE-listed option chain on USO (the largest oil ETF, tracks WTI front-month). Used as the TradFi reference smile because CL=F itself has no Yahoo-accessible option chain. Strikes are converted to crude-price scale via <code>K_cl = K_uso × (CL=F_spot / USO_spot)</code> so they line up with prediction-market strikes on the same x-axis. USO has roll/tracking-error baked in, so its IV differs slightly from "pure" CL IV — close enough for v1.</p>
+      <p><strong>USO tracking caveat.</strong> The USO/CL spot ratio drifts ~0.5–2% per day (USO carries roll losses in contango, gains in backwardation; the ETF is rebalanced monthly so the basis to CL moves around). This means the <em>same conceptual K</em> can land at slightly different x-coordinates across different snapshots — apparent smile drift in §3/§4 may include a USO-tracking component, not just market repricing. Documented here, not corrected: a daily live-rescale would be a v2 enhancement.</p>
       <p><strong>OVX</strong> — CBOE Crude Oil Volatility Index, a single number representing 30-day forward ATM IV on USO options. The oil-market equivalent of VIX. Free via Yahoo (<code>^OVX</code>); used as the dashed grey reference line in the smile.</p>
       <p><strong>Kalshi</strong> — KXWTIW weekly settle-price binary markets ("Will WTI settle &gt; $X on Friday?"). Each market gives one (strike, prob) point; we invert to IV via the lognormal CDF. Multi-strike → real smile shape.</p>
       <p><strong>Polymarket</strong> — "Will Crude Oil settle at $X-$Y in [Month]?" range markets. Each gives one (range, prob) point; inverted via <code>P(lo &lt; S_T &lt; hi)</code>. We exclude "hit by end of [Month]" markets (path-dependent max-of-path; needs different math).</p>
@@ -278,32 +279,33 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">3</span> ATM IV · time series <span style="color:var(--warn);font-size:.72rem;font-weight:500;letter-spacing:.04em">⚠ MIXED TENORS</span></h2>
-    <p class="desc">At-the-money IV (~spot strike) per venue. <strong style="color:var(--warn)">Each venue uses its own settle date</strong> — Kalshi ~4-7d (KXWTIW weekly), Polymarket ~30-60d (monthly settle), CBOE/USO ~30d (closest-to-target), OVX 30d (constant index). The lines are NOT directly comparable in level — only in shape and time evolution. Hover shows each point's DTE.</p>
-    <details class="howto"><summary>How to read this</summary>
-      <div class="body">
-        <p><strong>The mixed-tenor problem.</strong> Pred markets have specific resolution dates and we can't pick "30-day" Kalshi because Kalshi only lists weekly WTI markets. So this chart plots different tenors on the same axis — a 4-day Kalshi IV is naturally different from a 30-day CBOE IV (vol term structure: typically backwardated in a calm market, contangoed when stressed).</p>
-        <p><strong>What's still meaningful here.</strong> (a) <em>Time evolution per venue</em> — is Kalshi's vol drifting up or down? (b) <em>Co-movement</em> — when CBOE moves, do pred markets follow? (c) <em>Sustained level differences vs term structure</em> — a 20-vol-pt Kalshi-vs-CBOE gap is way more than what term structure alone explains, so it's signal.</p>
-        <p><strong>What's NOT meaningful.</strong> Reading absolute spread between two lines and calling it edge. For tradeable spreads with proper tenor matching, see §4 (where the CBOE leg is repicked per snapshot to match the pred's expiry).</p>
-        <p><strong>Heads-up about ATM.</strong> "Closest strike to spot" can jump as spot moves. For Polymarket the closest market is often a $5-10-wide range (so ATM is approximate). Tooltip flags both DTE and strike distance.</p>
-      </div>
-    </details>
-    <div id="chart-atm-ts" class="chart"></div>
-  </section>
-
-  <section class="panel">
-    <h2><span class="num">4</span> Probability gap · pred-market vs traditional</h2>
-    <p class="desc">Same question to every venue: <strong>"What's the chance WTI ends above $K by date T?"</strong> Pred markets sell this directly (the YES price). Option chains imply it via Breeden–Litzenberger. OVX implies it via the lognormal CDF. Plotted is <strong>pred − trad</strong> in <strong>probability points</strong> — positive = pred market thinks the right tail is richer.</p>
+    <h2><span class="num">3</span> Probability gap · pred-market vs traditional</h2>
+    <p class="desc">Same question to every venue: <strong>"What's the chance WTI ends above $K by date T?"</strong> Pred markets sell this directly (the YES price). Option chains imply it via Breeden–Litzenberger. OVX implies it via the lognormal CDF. Plotted is <strong>pred − trad</strong> in <strong>probability points</strong> — positive = pred market thinks the right tail is richer. <strong>This is the headline apples-to-apples comparison.</strong></p>
     <details class="howto"><summary>How to read this · in plain English</summary>
       <div class="body">
         <p><strong>Why probability instead of vol points.</strong> Vol points compare an "implied volatility number" between very different financial objects (binary markets, vanilla options, variance indexes) — never strictly apples-to-apples. <em>Probability of crossing a strike</em> IS the same financial question for all four venues, so disagreement here is real signal, not artifact.</p>
         <p><strong>What "+5 pp Kalshi vs CBOE" means in practice.</strong> Kalshi's market is pricing the right tail (e.g. "WTI &gt; $107 by Friday") at 30%; the same probability extracted from the CBOE option chain is 25%; the gap is +5 percentage points. Trade interpretation: sell Kalshi YES, buy a CBOE call spread of equal payoff at the same strike. You collect 5 cents per dollar of risk — minus execution costs.</p>
         <p><strong>How "trad" probabilities are computed.</strong> A digital call paying $1 if S&gt;K is approximately <code>−∂C/∂K</code> (the slope of vanilla call prices across strikes). We estimate it by finite difference between the two CBOE strikes straddling K. For OVX: assume a lognormal at σ = OVX, integrate the right tail. Same K, same T as the pred leg.</p>
-        <p><strong>Strike choice.</strong> For each snapshot, we use each pred venue's most-OTM "above K" market — the strike where it's most informative about the tail. That changes between snapshots; hover shows the actual K.</p>
-        <p><strong>Tenor.</strong> The CBOE leg uses the chain expiry closest to the pred's expiry; OVX is a 30d index so we evaluate at the pred's expiry under flat-vol assumption (small approximation when pred T ≈ 30d, larger for Kalshi at 7d). Hover shows both legs' DTE.</p>
+        <p><strong>Strike choice — locked per loaded window.</strong> Across all snapshots in your selected date range, we pick each pred venue's <em>highest-volume</em> "above K" market and lock that K for the whole window. The chart title and legend show the actual K used. Reload with a different range and K is repicked. (Earlier versions repicked K per snapshot, which made the line jump as liquidity migrated.)</p>
+        <p><strong>Tenor.</strong> The CBOE leg uses the chain expiry closest to the pred's expiry (skipping any already-expired); OVX is a 30d index so we evaluate at the pred's expiry under flat-vol assumption (small approximation when pred T ≈ 30d, larger for Kalshi at 7d — hover shows the term mismatch in days, typically biases ~2-5 vol pts on Kalshi pairs).</p>
+        <p><strong>"⚠ wide BL strike spacing"</strong> in CBOE hovers means the chain's two adjacent strikes around K are more than $2 apart — the digital estimate is noisier than usual. Treat those points with extra skepticism.</p>
       </div>
     </details>
     <div id="chart-dispersion" class="chart"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">4</span> Per-venue ATM IV · solo time evolution <span style="color:var(--warn);font-size:.72rem;font-weight:500;letter-spacing:.04em">⚠ MIXED TENORS — NOT FOR CROSS-VENUE READING</span></h2>
+    <p class="desc">At-the-money IV (~spot strike) per venue. <strong style="color:var(--warn)">Each line is its own venue's own tenor</strong> — Kalshi ~4-7d, Polymarket ~30-60d, CBOE/USO ~30d, OVX 30d. The lines are NOT directly comparable in level. Use this only for <em>per-venue trends</em> (is Kalshi's vol rising?) and <em>co-movement</em> (does Polymarket follow CBOE?). For tradeable cross-venue gaps with proper tenor + strike matching, see §3 above.</p>
+    <details class="howto"><summary>How to read this · what is and isn't meaningful</summary>
+      <div class="body">
+        <p><strong>The mixed-tenor problem.</strong> Pred markets have specific resolution dates and we can't pick "30-day" Kalshi because Kalshi only lists weekly WTI markets. So this chart plots different tenors on the same axis — a 4-day Kalshi IV is naturally different from a 30-day CBOE IV (vol term structure: typically backwardated in a calm market, contangoed when stressed).</p>
+        <p><strong>What's still meaningful here.</strong> (a) <em>Time evolution per venue</em> — is Kalshi's vol drifting up or down? (b) <em>Co-movement</em> — when CBOE moves, do pred markets follow? (c) <em>Sustained level differences far beyond what term structure alone explains</em> — a 20-vol-pt Kalshi-vs-CBOE gap is way more than what term structure alone could justify, so the level gap itself is a hint (but §3 above is the rigorous comparison).</p>
+        <p><strong>What's NOT meaningful.</strong> Reading absolute spread between two lines and calling it edge. The whole point of §3 (probability space) is to do the cross-venue comparison properly.</p>
+        <p><strong>Heads-up about ATM.</strong> "Closest strike to spot" can jump as spot moves. For Polymarket the closest market is often a $5-10-wide range (so ATM is approximate). Tooltip flags both DTE and strike distance.</p>
+      </div>
+    </details>
+    <div id="chart-atm-ts" class="chart"></div>
   </section>
 
   <section class="panel">
@@ -486,6 +488,9 @@ function probAboveLognormal(F, K, T, sigma) {
 // Breeden-Litzenberger digital call from the option chain at strike K, tenor T.
 // Approximates −∂C/∂K via central finite difference between adjacent strikes
 // straddling K. Each call price is computed from its strike's IV (BS forward).
+// Returns { p, dK } where dK is the interpolation band width — callers should
+// surface a "wide interpolation" warning when dK is large (a chain with
+// $5-spaced strikes gives a much noisier digital than $1-spaced).
 // Returns null if K is outside the chain's strike range.
 function probAboveCboeChain(quotes, F, T, K) {
   if (!quotes || quotes.length < 2) return null;
@@ -502,7 +507,10 @@ function probAboveCboeChain(quotes, F, T, K) {
   const C_hi = _bsCallForward(F, hi.K, T, hi.sigma);
   // digital ≈ -(C(K+) − C(K−)) / (K+ − K−)  =  (C(K−) − C(K+)) / (K+ − K−)
   const digital = (C_lo - C_hi) / (hi.K - lo.K);
-  return Math.max(0, Math.min(1, digital));
+  return {
+    p: Math.max(0, Math.min(1, digital)),
+    dK: hi.K - lo.K,
+  };
 }
 
 // Standard normal CDF via Abramowitz-Stegun 7.1.26 erf approximation. Used
@@ -1122,6 +1130,9 @@ async function renderDispersion() {
   }
 
   // Pick the CBOE chain whose expiry DTE is closest to a target DTE.
+  // Skip expiries already in the past relative to ts (defensive against stale
+  // CBOE data — when CBOE is closed, leftover Friday-pinned expiries can leak
+  // through if not gated).
   function pickCboeChain(venueQuotes, tsMs, targetDte) {
     if (!venueQuotes || !venueQuotes.length) return null;
     const byExpiry = new Map();
@@ -1129,15 +1140,92 @@ async function renderDispersion() {
       if (!byExpiry.has(q.expiry)) byExpiry.set(q.expiry, []);
       byExpiry.get(q.expiry).push(q);
     }
-    const exps = Array.from(byExpiry.keys()).map(e => ({
-      expiry: e,
-      dte: (new Date(e).getTime() - tsMs) / 86400000,
-    }));
+    const exps = Array.from(byExpiry.keys())
+      .map(e => ({ expiry: e, dte: (new Date(e).getTime() - tsMs) / 86400000 }))
+      .filter(e => e.dte > 0);
     if (!exps.length) return null;
     const best = exps.reduce((a, b) =>
       Math.abs(a.dte - targetDte) <= Math.abs(b.dte - targetDte) ? a : b);
     return { expiry: best.expiry, dte: best.dte, quotes: byExpiry.get(best.expiry) };
   }
+
+  // ----- (c3) Lock K per loaded window -----
+  // Across the WHOLE dataset, pick each pred venue's single most-volume
+  // "above K" market. Use that K for every snapshot. Stable line, single
+  // consistent question being tracked over time. K is shown in the trace
+  // legend so the reader always knows which strike they're seeing.
+  function pickLockedKForVenue(venue) {
+    // Sum 24h-volume per (strike) across all snapshots in the loaded range.
+    const volByK = new Map();
+    for (const venueMap of byTs.values()) {
+      const qs = venueMap.get(venue) || [];
+      for (const q of qs) {
+        if (q.lo_strike == null || q.hi_strike != null) continue;
+        if (q.raw_prob == null || q.raw_prob < 0.005) continue;
+        const k = q.lo_strike;
+        const v = q.volume_24h_usd ?? 0;
+        volByK.set(k, (volByK.get(k) ?? 0) + v);
+      }
+    }
+    if (!volByK.size) return null;
+    let bestK = null, bestV = -Infinity;
+    for (const [k, v] of volByK) {
+      if (v > bestV) { bestV = v; bestK = k; }
+    }
+    return bestK;
+  }
+  // We need volume_24h_usd to make the volume-weighted pick. Re-query with
+  // that field; the original allQuotes pull above intentionally omitted it
+  // to keep the row size small.
+  const allQuotesWithVol = await rowsOf(`
+    SELECT ts, venue, expiry, underlying_px, strike,
+           lo_strike, hi_strike, mid_iv, raw_prob, volume_24h_usd
+    FROM vol_quotes
+    WHERE mid_iv IS NOT NULL OR raw_prob IS NOT NULL
+  `);
+  const byTsForLock = new Map();  // separate map only used by the lock pick
+  for (const q of allQuotesWithVol) {
+    if (STALE_OUTSIDE_CBOE_HOURS.has(q.venue) && !isCboeOpen(q.ts)) continue;
+    if (!byTsForLock.has(q.ts)) byTsForLock.set(q.ts, new Map());
+    const v = byTsForLock.get(q.ts);
+    if (!v.has(q.venue)) v.set(q.venue, []);
+    v.get(q.venue).push(q);
+  }
+  // Override the original byTs with the volume-aware version (unused fields
+  // don't hurt).
+  byTs.clear();
+  for (const [ts, vm] of byTsForLock) byTs.set(ts, vm);
+
+  const lockedK = {
+    kalshi: (function() {
+      const volByK = new Map();
+      for (const vm of byTs.values()) {
+        for (const q of (vm.get("kalshi") || [])) {
+          if (q.lo_strike == null || q.hi_strike != null) continue;
+          if (q.raw_prob == null || q.raw_prob < 0.005) continue;
+          const v = q.volume_24h_usd ?? 0;
+          volByK.set(q.lo_strike, (volByK.get(q.lo_strike) ?? 0) + v);
+        }
+      }
+      let bestK = null, bestV = -Infinity;
+      for (const [k, v] of volByK) if (v > bestV) { bestV = v; bestK = k; }
+      return bestK;
+    })(),
+    polymarket: (function() {
+      const volByK = new Map();
+      for (const vm of byTs.values()) {
+        for (const q of (vm.get("polymarket") || [])) {
+          if (q.lo_strike == null || q.hi_strike != null) continue;
+          if (q.raw_prob == null || q.raw_prob < 0.005) continue;
+          const v = q.volume_24h_usd ?? 0;
+          volByK.set(q.lo_strike, (volByK.get(q.lo_strike) ?? 0) + v);
+        }
+      }
+      let bestK = null, bestV = -Infinity;
+      for (const [k, v] of volByK) if (v > bestV) { bestV = v; bestK = k; }
+      return bestK;
+    })(),
+  };
 
   const PAIRS = [
     { name: "Kalshi vs CBOE",     pred: "kalshi",     trad: "cboe_uso", color: "#f59e0b", dash: "solid" },
@@ -1150,20 +1238,29 @@ async function renderDispersion() {
   for (const [ts, byVenue] of byTs.entries()) {
     const tsMs = new Date(ts).getTime();
     for (const pair of PAIRS) {
-      const predTail = pickPredAboveTail(byVenue.get(pair.pred));
-      if (!predTail) continue;
-      const K = predTail.lo_strike;
+      const targetK = lockedK[pair.pred];
+      if (targetK == null) continue;
+      // Find the pred quote at the LOCKED strike (not most-OTM per snapshot).
+      const predQuotes = (byVenue.get(pair.pred) || []).filter(
+        q => q.lo_strike === targetK && q.hi_strike == null && q.raw_prob != null
+      );
+      if (!predQuotes.length) continue;
+      const predTail = predQuotes[0];
+      const K = targetK;
       const F = predTail.underlying_px;
       const predDte = (new Date(predTail.expiry).getTime() - tsMs) / 86400000;
       if (!(predDte > 0) || !(F > 0)) continue;
       const T_pred_years = predDte / 365.25;
 
-      let tradP = null, tradDte = null, tradLabel = null;
+      let tradP = null, tradDte = null, tradLabel = null, dKWide = false;
       if (pair.trad === "cboe_uso") {
         const chain = pickCboeChain(byVenue.get("cboe_uso"), tsMs, predDte);
         if (!chain) continue;
         const T_trad_years = chain.dte / 365.25;
-        tradP = probAboveCboeChain(chain.quotes, F, T_trad_years, K);
+        const result = probAboveCboeChain(chain.quotes, F, T_trad_years, K);
+        if (!result) continue;
+        tradP = result.p;
+        dKWide = result.dK > 2.0;  // (a) flag wide BL interpolation
         tradDte = chain.dte;
         tradLabel = "CBOE chain " + chain.expiry;
       } else {  // ovx
@@ -1184,6 +1281,8 @@ async function renderDispersion() {
         K, F,
         pred_dte: predDte,
         trad_dte: tradDte,
+        term_mismatch: Math.abs(predDte - tradDte),
+        dK_wide: dKWide,
         trad_label: tradLabel,
       });
     }
@@ -1192,25 +1291,43 @@ async function renderDispersion() {
   const traces = PAIRS.map(pair => {
     const data = seriesByPair.get(pair.name).sort((a, b) => new Date(a.ts) - new Date(b.ts));
     if (!data.length) return null;
+    const lockedKForVenue = lockedK[pair.pred];
+    const kTag = lockedKForVenue != null ? ` (K=$${lockedKForVenue.toFixed(0)})` : "";
+    // (b) Term-mismatch caveat in OVX hover; (a) wide-BL flag in CBOE hover.
+    const tradHoverLine = pair.trad === "ovx"
+      ? "trad <b>OVX</b> %{customdata[1]:.1f}% (lognormal at pred T)<br>"
+        + "<span style='color:#a0a8bd'>term mismatch: %{customdata[5]:.0f}d (OVX is 30d index, σ applied at pred T — typically biases ~2-5 vp on 7d Kalshi)</span>"
+      : "trad <b>CBOE</b> %{customdata[1]:.1f}% via Breeden–Litzenberger digital (%{customdata[4]:.0f}d)";
     return {
       x: data.map(d => d.ts),
       y: data.map(d => d.gap_pp),
-      name: pair.name,
+      name: pair.name + kTag,
       mode: "lines+markers", type: "scatter",
       line: { color: pair.color, width: 1.6, shape: "spline", smoothing: 0.4, dash: pair.dash },
       marker: { color: pair.color, size: 5 },
-      customdata: data.map(d => [d.pred_p, d.trad_p, d.K, d.pred_dte, d.trad_dte]),
+      customdata: data.map(d => [
+        d.pred_p, d.trad_p, d.K, d.pred_dte, d.trad_dte, d.term_mismatch,
+        d.dK_wide ? "⚠ wide BL strike spacing" : "",
+      ]),
       hovertemplate:
         "%{x|%Y-%m-%d %H:%M}<br>" +
         "<b>" + pair.name + ": %{y:+.1f} pp</b><br>" +
         "K $%{customdata[2]:.1f}<br>" +
         "pred P %{customdata[0]:.1f}% (%{customdata[3]:.0f}d)<br>" +
-        "trad P %{customdata[1]:.1f}% (%{customdata[4]:.0f}d)<extra></extra>",
+        tradHoverLine +
+        (pair.trad === "cboe_uso" ? "<br>%{customdata[6]}" : "") +
+        "<extra></extra>",
     };
   }).filter(Boolean);
 
+  // Title surfaces locked-K per venue so the reader always sees what's compared.
+  const kSummary = ["kalshi", "polymarket"]
+    .filter(v => lockedK[v] != null)
+    .map(v => `${VENUE_LABEL[v]} K=$${lockedK[v].toFixed(0)}`)
+    .join(" · ");
   Plotly.react("chart-dispersion", traces, darkLayout({
-    title: { text: "P(WTI > K at expiry) · pred-market YES vs traditional digital (probability points)" },
+    title: { text: "P(WTI > K at expiry) · pred YES vs traditional digital (pp)"
+                   + (kSummary ? `  —  ${kSummary}` : "") },
     yaxis: Object.assign(darkLayout().yaxis, {
       title: { text: "pred P − trad P", font: FONT },
       ticksuffix: " pp", zeroline: true, zerolinecolor: "#3a4356"
@@ -1234,18 +1351,20 @@ async function renderTopEvents() {
   const venuesSql = venueFilter ? `'${venueFilter}'` : `'kalshi','polymarket'`;
 
   const cboe = await rowsOf(`
-    SELECT ts, expiry, strike, mid_iv
+    SELECT ts, expiry, strike, mid_iv, underlying_px
     FROM vol_quotes WHERE venue = 'cboe_uso' AND mid_iv IS NOT NULL
   `);
   const pred = await rowsOf(`
-    SELECT ts, venue, expiry, strike, mid_iv, volume_24h_usd, underlying_px,
-           lo_strike, hi_strike
+    SELECT ts, venue, expiry, strike, mid_iv, raw_prob, volume_24h_usd,
+           underlying_px, lo_strike, hi_strike
     FROM vol_quotes
-    WHERE mid_iv IS NOT NULL AND venue IN (${venuesSql})
+    WHERE (mid_iv IS NOT NULL OR raw_prob IS NOT NULL) AND venue IN (${venuesSql})
       AND (volume_24h_usd IS NULL OR volume_24h_usd >= ${minVol})
   `);
 
   // Index CBOE by ts so we can do per-snapshot expiry+strike matching in JS.
+  // Group ALL strikes per (ts, expiry) for the chain-based digital prob calc
+  // (Breeden–Litzenberger needs adjacent strikes, not just one).
   const cboeByTs = new Map();
   for (const c of cboe) {
     if (!cboeByTs.has(c.ts)) cboeByTs.set(c.ts, []);
@@ -1260,8 +1379,11 @@ async function renderTopEvents() {
     const dte = (iso) => (new Date(iso).getTime() - tsMs) / 86400000;
     const predDte = dte(p.expiry);
 
-    // Stage 1: pick CBOE expiry closest to pred's
-    const enriched = candidates.map(c => ({ ...c, _dte: dte(c.expiry), _ed: Math.abs(dte(c.expiry) - predDte) }));
+    // Stage 1: pick CBOE expiry closest to pred's (skip already-expired)
+    const enriched = candidates
+      .map(c => ({ ...c, _dte: dte(c.expiry), _ed: Math.abs(dte(c.expiry) - predDte) }))
+      .filter(c => c._dte > 0);
+    if (!enriched.length) continue;
     const minEd = Math.min(...enriched.map(c => c._ed));
     const sameExpiry = enriched.filter(c => c._ed === minEd);
     // Stage 2: within that expiry, closest strike
@@ -1269,38 +1391,60 @@ async function renderTopEvents() {
       Math.abs(c.strike - p.strike) < Math.abs(best.strike - p.strike) ? c : best,
       sameExpiry[0]);
 
+    // (f) Probability-pt gap, computed via the same Breeden–Litzenberger digital
+    // §4 uses. Apples-to-apples with §4. We use the pred quote's strike (NOT
+    // CBOE's nearest) so pred_P and trad_P are both at the SAME K.
+    let gapPp = null;
+    if (p.raw_prob != null && p.underlying_px) {
+      const T_trad_years = match._dte / 365.25;
+      const blResult = probAboveCboeChain(sameExpiry, p.underlying_px, T_trad_years, p.strike);
+      if (blResult != null) {
+        gapPp = (p.raw_prob - blResult.p) * 100;
+      }
+    }
+
     events.push({
       ts: p.ts, venue: p.venue,
-      pred_expiry: p.expiry, pred_strike: p.strike, pred_iv: p.mid_iv,
+      pred_expiry: p.expiry, pred_strike: p.strike, pred_iv: p.mid_iv, pred_prob: p.raw_prob,
       pred_dte: predDte,
       pred_is_range: p.lo_strike != null && p.hi_strike != null,
       cboe_expiry: match.expiry, cboe_strike: match.strike, cboe_iv: match.mid_iv,
       cboe_dte: match._dte,
       tenor_mismatch: Math.abs(match._dte - predDte),
       strike_mismatch: Math.abs(match.strike - p.strike),
-      gap: (p.mid_iv - match.mid_iv) * 100,
+      gap_vp: (p.mid_iv - match.mid_iv) * 100,
+      gap_pp: gapPp,
       volume_24h_usd: p.volume_24h_usd,
     });
   }
-  events.sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+  // Sort by |pp| if available else fall back to |vp|.
+  events.sort((a, b) => {
+    const ag = a.gap_pp != null ? Math.abs(a.gap_pp) : Math.abs(a.gap_vp);
+    const bg = b.gap_pp != null ? Math.abs(b.gap_pp) : Math.abs(b.gap_vp);
+    return bg - ag;
+  });
   const top = events.slice(0, 10);
 
   let html = `<thead><tr>
     <th style="text-align:right">#</th>
     <th>Timestamp (UTC)</th><th>Venue</th>
     <th>Pred</th><th>CBOE</th>
+    <th style="text-align:right" title="Probability gap (apples-to-apples) — pred YES minus CBOE digital. Same K, same T.">Gap (pp)</th>
+    <th style="text-align:right" title="Vol-pt gap (legacy) — pred IV minus CBOE-nearest-strike IV. Less rigorous (different IV models, different K).">Gap (vp)</th>
     <th style="text-align:right">Pred IV</th>
     <th style="text-align:right">CBOE IV</th>
-    <th style="text-align:right">Gap (vp)</th>
     <th style="text-align:right">24h vol</th>
   </tr></thead><tbody>`;
   if (!top.length) {
-    html += `<tr><td colspan="9" class="empty">No dislocation events match your filters yet.</td></tr>`;
+    html += `<tr><td colspan="10" class="empty">No dislocation events match your filters yet.</td></tr>`;
   }
   top.forEach((r, i) => {
-    const gap = r.gap;
-    const cls = gap > 0 ? "pos" : "neg";
-    const sign = gap >= 0 ? "+" : "";
+    const vp = r.gap_vp;
+    const vpCls = vp > 0 ? "pos" : "neg";
+    const vpSign = vp >= 0 ? "+" : "";
+    const ppCell = r.gap_pp != null
+      ? `<span class="gap ${r.gap_pp > 0 ? "pos" : "neg"}">${r.gap_pp >= 0 ? "+" : ""}${r.gap_pp.toFixed(1)}</span>`
+      : `<span style="color:var(--text-2)">—</span>`;
     // Match-quality flags: tenor > 5d OR strike > $1 = loose comparison.
     const tenorWarn = r.tenor_mismatch > 5
       ? ` <span title="tenor gap ${r.tenor_mismatch.toFixed(0)}d" style="color:var(--warn);font-size:.7rem">⚠</span>` : "";
@@ -1315,9 +1459,10 @@ async function renderTopEvents() {
       <td><span class="venue"><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${COLOR[r.venue]};margin-right:.4rem"></span>${VENUE_LABEL[r.venue]}</span></td>
       <td class="mono">${predDesc}</td>
       <td class="mono">${cboeDesc}</td>
+      <td class="mono" style="text-align:right">${ppCell}</td>
+      <td class="mono gap ${vpCls}" style="text-align:right;opacity:.6">${vpSign}${vp.toFixed(1)}</td>
       <td class="mono" style="text-align:right">${(r.pred_iv*100).toFixed(1)}%</td>
       <td class="mono" style="text-align:right">${(r.cboe_iv*100).toFixed(1)}%</td>
-      <td class="mono gap ${cls}" style="text-align:right">${sign}${gap.toFixed(1)}</td>
       <td class="mono" style="text-align:right">${r.volume_24h_usd != null ? "$" + Number(r.volume_24h_usd).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td>
     </tr>`;
   });
@@ -1367,11 +1512,11 @@ async function renderVolDepth() {
 
 async function renderAll() {
   try {
-    await renderSmile();
-    await renderAtmTs();
-    await renderDispersion();
-    await renderTopEvents();
-    await renderVolDepth();
+    await renderSmile();        // §2
+    await renderDispersion();   // §3 (probability gap — headline comparison)
+    await renderAtmTs();        // §4 (mixed-tenor solo IV — supporting context)
+    await renderTopEvents();    // §5
+    await renderVolDepth();     // §6
     setStatus("ready");
   } catch (e) {
     setStatus("query error: " + e.message);
