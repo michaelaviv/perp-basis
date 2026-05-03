@@ -291,13 +291,15 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">4</span> Pred-market vs traditional spread</h2>
-    <p class="desc">Pairwise ATM-IV spread (vol pts) between prediction markets (Kalshi, Polymarket) and traditional vol (CBOE/USO, OVX). The structural mismatch IS the trade — hover for each leg's strike, IV, and DTE.</p>
-    <details class="howto"><summary>How to read this</summary>
+    <h2><span class="num">4</span> Probability gap · pred-market vs traditional</h2>
+    <p class="desc">Same question to every venue: <strong>"What's the chance WTI ends above $K by date T?"</strong> Pred markets sell this directly (the YES price). Option chains imply it via Breeden–Litzenberger. OVX implies it via the lognormal CDF. Plotted is <strong>pred − trad</strong> in <strong>probability points</strong> — positive = pred market thinks the right tail is richer.</p>
+    <details class="howto"><summary>How to read this · in plain English</summary>
       <div class="body">
-        <p><strong>Four pairs, two pred markets × two trad references.</strong> Solid = CBOE leg, dashed = OVX leg. Amber = Kalshi, purple = Polymarket. Each line is <em>pred IV − trad IV</em> in vol points; positive = the pred market is pricing higher vol than the traditional reference.</p>
-        <p><strong>Tenor matching.</strong> Pred markets have specific resolution dates — for the CBOE legs we pick the CBOE expiry closest to the pred market's expiry on each snapshot. OVX is a constant-30d index, so the OVX legs always include some term-structure mismatch when the pred market is far from 30d. Hover shows both legs' DTE so you can see when the comparison is loose.</p>
-        <p><strong>Not strict apples-to-apples — that's the point.</strong> Kalshi/Polymarket back-solve IV from binary range markets; CBOE is vanilla ATM; OVX is a model-free strip. The IV objects aren't identical, but the spread is the cross-instrument carry available to anyone willing to warehouse the structural difference.</p>
+        <p><strong>Why probability instead of vol points.</strong> Vol points compare an "implied volatility number" between very different financial objects (binary markets, vanilla options, variance indexes) — never strictly apples-to-apples. <em>Probability of crossing a strike</em> IS the same financial question for all four venues, so disagreement here is real signal, not artifact.</p>
+        <p><strong>What "+5 pp Kalshi vs CBOE" means in practice.</strong> Kalshi's market is pricing the right tail (e.g. "WTI &gt; $107 by Friday") at 30%; the same probability extracted from the CBOE option chain is 25%; the gap is +5 percentage points. Trade interpretation: sell Kalshi YES, buy a CBOE call spread of equal payoff at the same strike. You collect 5 cents per dollar of risk — minus execution costs.</p>
+        <p><strong>How "trad" probabilities are computed.</strong> A digital call paying $1 if S&gt;K is approximately <code>−∂C/∂K</code> (the slope of vanilla call prices across strikes). We estimate it by finite difference between the two CBOE strikes straddling K. For OVX: assume a lognormal at σ = OVX, integrate the right tail. Same K, same T as the pred leg.</p>
+        <p><strong>Strike choice.</strong> For each snapshot, we use each pred venue's most-OTM "above K" market — the strike where it's most informative about the tail. That changes between snapshots; hover shows the actual K.</p>
+        <p><strong>Tenor.</strong> The CBOE leg uses the chain expiry closest to the pred's expiry; OVX is a 30d index so we evaluate at the pred's expiry under flat-vol assumption (small approximation when pred T ≈ 30d, larger for Kalshi at 7d). Hover shows both legs' DTE.</p>
       </div>
     </details>
     <div id="chart-dispersion" class="chart"></div>
@@ -973,119 +975,139 @@ async function renderAtmTs() {
   }), PLOTLY_OPTS);
 }
 
-// ----- §4 Pred-market vs traditional spread -----
-// Four pairwise spreads: {Kalshi, Polymarket} × {CBOE, OVX}.
-// CBOE leg is tenor-matched per snapshot (closest expiry to the pred market's).
-// OVX is constant-30d so OVX legs carry a known term-structure mismatch.
+// ----- §4 Probability gap (apples-to-apples) -----
+//
+// Replaces the old IV-pt dispersion chart. For each pred venue at each
+// snapshot, picks the venue's most-OTM "above K" market (Kalshi greater /
+// Polymarket > X), gets its YES probability directly, then computes the
+// SAME P(S>K, T) from CBOE chain (Breeden-Litzenberger digital ≈ −∂C/∂K)
+// and OVX (lognormal CDF, σ=OVX, evaluated at the pred's tenor under
+// flat-vol assumption). Spread = pred_P − trad_P in probability points.
 async function renderDispersion() {
-  // ATM (closest-strike-to-spot) per (ts, venue, expiry) — one row per expiry,
-  // so we can choose which CBOE expiry to pair with each pred market.
-  const allRows = await rowsOf(`
-    WITH atm_per_expiry AS (
-      SELECT ts, venue, expiry, underlying_px, strike, mid_iv,
-             ROW_NUMBER() OVER (
-               PARTITION BY ts, venue, expiry
-               ORDER BY abs(strike - underlying_px) ASC
-             ) AS rn
-      FROM vol_quotes WHERE mid_iv IS NOT NULL AND underlying_px IS NOT NULL
-    )
-    SELECT ts, venue, expiry, underlying_px, strike, mid_iv
-    FROM atm_per_expiry WHERE rn = 1
-    ORDER BY ts
+  // Pull every quote with the fields needed for either side of the comparison.
+  const allQuotes = await rowsOf(`
+    SELECT ts, venue, expiry, underlying_px, strike,
+           lo_strike, hi_strike, mid_iv, raw_prob
+    FROM vol_quotes
+    WHERE mid_iv IS NOT NULL OR raw_prob IS NOT NULL
   `);
-  const rows = allRows.filter(r => !STALE_OUTSIDE_CBOE_HOURS.has(r.venue) || isCboeOpen(r.ts));
 
-  const PAIRS = [
-    { name: "Kalshi − CBOE",     pred: "kalshi",     trad: "cboe_uso", color: "#f59e0b", dash: "solid" },
-    { name: "Kalshi − OVX",      pred: "kalshi",     trad: "ovx",      color: "#f59e0b", dash: "dash"  },
-    { name: "Polymarket − CBOE", pred: "polymarket", trad: "cboe_uso", color: "#a78bfa", dash: "solid" },
-    { name: "Polymarket − OVX",  pred: "polymarket", trad: "ovx",      color: "#a78bfa", dash: "dash"  },
-  ];
-
-  // Group by ts → venue → [rows].
+  // Group by ts → venue → [quotes], filtering out stale CBOE/OVX rows.
   const byTs = new Map();
-  for (const r of rows) {
-    if (!byTs.has(r.ts)) byTs.set(r.ts, new Map());
-    const v = byTs.get(r.ts);
-    if (!v.has(r.venue)) v.set(r.venue, []);
-    v.get(r.venue).push(r);
+  for (const q of allQuotes) {
+    if (STALE_OUTSIDE_CBOE_HOURS.has(q.venue) && !isCboeOpen(q.ts)) continue;
+    if (!byTs.has(q.ts)) byTs.set(q.ts, new Map());
+    const venueMap = byTs.get(q.ts);
+    if (!venueMap.has(q.venue)) venueMap.set(q.venue, []);
+    venueMap.get(q.venue).push(q);
   }
 
+  // Pred-side: most-OTM "above K" market (Kalshi greater / Polymarket >X).
+  // These have lo_strike set, hi_strike null. Pick the highest strike with
+  // a non-trivial probability (avoids 1-cent floor markets at the deep tail).
+  function pickPredAboveTail(venueQuotes) {
+    const aboveOnly = (venueQuotes || []).filter(
+      q => q.lo_strike != null && q.hi_strike == null && q.raw_prob != null
+    );
+    if (!aboveOnly.length) return null;
+    aboveOnly.sort((a, b) => b.lo_strike - a.lo_strike);
+    return aboveOnly.find(q => q.raw_prob >= 0.005) || aboveOnly[aboveOnly.length - 1];
+  }
+
+  // Pick the CBOE chain whose expiry DTE is closest to a target DTE.
+  function pickCboeChain(venueQuotes, tsMs, targetDte) {
+    if (!venueQuotes || !venueQuotes.length) return null;
+    const byExpiry = new Map();
+    for (const q of venueQuotes) {
+      if (!byExpiry.has(q.expiry)) byExpiry.set(q.expiry, []);
+      byExpiry.get(q.expiry).push(q);
+    }
+    const exps = Array.from(byExpiry.keys()).map(e => ({
+      expiry: e,
+      dte: (new Date(e).getTime() - tsMs) / 86400000,
+    }));
+    if (!exps.length) return null;
+    const best = exps.reduce((a, b) =>
+      Math.abs(a.dte - targetDte) <= Math.abs(b.dte - targetDte) ? a : b);
+    return { expiry: best.expiry, dte: best.dte, quotes: byExpiry.get(best.expiry) };
+  }
+
+  const PAIRS = [
+    { name: "Kalshi vs CBOE",     pred: "kalshi",     trad: "cboe_uso", color: "#f59e0b", dash: "solid" },
+    { name: "Kalshi vs OVX",      pred: "kalshi",     trad: "ovx",      color: "#f59e0b", dash: "dash"  },
+    { name: "Polymarket vs CBOE", pred: "polymarket", trad: "cboe_uso", color: "#a78bfa", dash: "solid" },
+    { name: "Polymarket vs OVX",  pred: "polymarket", trad: "ovx",      color: "#a78bfa", dash: "dash"  },
+  ];
   const seriesByPair = new Map(PAIRS.map(p => [p.name, []]));
 
   for (const [ts, byVenue] of byTs.entries()) {
     const tsMs = new Date(ts).getTime();
-    const dte = (e) => (new Date(e).getTime() - tsMs) / 86400000;
-
-    // Pred markets typically have one active expiry per snapshot; if multiple,
-    // take the nearest non-expired one (most active / most liquid).
-    const pickPred = (v) => {
-      const rs = (byVenue.get(v) || []).filter(r => dte(r.expiry) >= 0);
-      if (!rs.length) return null;
-      return rs.reduce((a, b) => dte(a.expiry) <= dte(b.expiry) ? a : b);
-    };
-    // CBOE: pick expiry closest to target DTE (the pred market's DTE).
-    const pickCboe = (targetDte) => {
-      const rs = byVenue.get("cboe_uso") || [];
-      if (!rs.length) return null;
-      return rs.reduce((a, b) =>
-        Math.abs(dte(a.expiry) - targetDte) <= Math.abs(dte(b.expiry) - targetDte) ? a : b
-      );
-    };
-    const ovx = (byVenue.get("ovx") || [])[0] || null;
-
     for (const pair of PAIRS) {
-      const pred = pickPred(pair.pred);
-      if (!pred) continue;
-      const trad = pair.trad === "ovx" ? ovx : pickCboe(dte(pred.expiry));
-      if (!trad) continue;
+      const predTail = pickPredAboveTail(byVenue.get(pair.pred));
+      if (!predTail) continue;
+      const K = predTail.lo_strike;
+      const F = predTail.underlying_px;
+      const predDte = (new Date(predTail.expiry).getTime() - tsMs) / 86400000;
+      if (!(predDte > 0) || !(F > 0)) continue;
+      const T_pred_years = predDte / 365.25;
+
+      let tradP = null, tradDte = null, tradLabel = null;
+      if (pair.trad === "cboe_uso") {
+        const chain = pickCboeChain(byVenue.get("cboe_uso"), tsMs, predDte);
+        if (!chain) continue;
+        const T_trad_years = chain.dte / 365.25;
+        tradP = probAboveCboeChain(chain.quotes, F, T_trad_years, K);
+        tradDte = chain.dte;
+        tradLabel = "CBOE chain " + chain.expiry;
+      } else {  // ovx
+        const ovxQuotes = byVenue.get("ovx") || [];
+        if (!ovxQuotes.length || ovxQuotes[0].mid_iv == null) continue;
+        // Evaluate OVX's σ at the pred's tenor (flat-vol approximation).
+        tradP = probAboveLognormal(F, K, T_pred_years, ovxQuotes[0].mid_iv);
+        tradDte = predDte;
+        tradLabel = "OVX (lognormal at pred T)";
+      }
+      if (tradP == null || !Number.isFinite(tradP)) continue;
+
       seriesByPair.get(pair.name).push({
         ts,
-        gap: (pred.mid_iv - trad.mid_iv) * 100,
-        pred_iv: pred.mid_iv * 100,
-        trad_iv: trad.mid_iv * 100,
-        pred_dte: dte(pred.expiry),
-        trad_dte: dte(trad.expiry),
-        pred_strike: pred.strike,
-        trad_strike: trad.strike,
+        gap_pp: (predTail.raw_prob - tradP) * 100,
+        pred_p: predTail.raw_prob * 100,
+        trad_p: tradP * 100,
+        K, F,
+        pred_dte: predDte,
+        trad_dte: tradDte,
+        trad_label: tradLabel,
       });
     }
   }
 
   const traces = PAIRS.map(pair => {
     const data = seriesByPair.get(pair.name).sort((a, b) => new Date(a.ts) - new Date(b.ts));
-    // Hover shows both legs' DTE so the term-structure mismatch is visible.
-    // OVX is constant-30d, so its DTE column is fixed at 30 (a known approximation).
-    const tradHover = pair.trad === "ovx"
-      ? "trad <b>OVX</b> %{customdata[1]:.1f}% (30d index)<br>" +
-        "<span style='color:#a0a8bd'>term mismatch: %{customdata[6]:.0f}d</span>"
-      : "trad <b>CBOE</b> %{customdata[1]:.1f}% @ K%{customdata[5]:.0f} (%{customdata[3]:.0f}d)<br>" +
-        "<span style='color:#a0a8bd'>term mismatch: %{customdata[6]:.0f}d</span>";
+    if (!data.length) return null;
     return {
       x: data.map(d => d.ts),
-      y: data.map(d => d.gap),
+      y: data.map(d => d.gap_pp),
       name: pair.name,
       mode: "lines+markers", type: "scatter",
       line: { color: pair.color, width: 1.6, shape: "spline", smoothing: 0.4, dash: pair.dash },
       marker: { color: pair.color, size: 5 },
-      customdata: data.map(d => [
-        d.pred_iv, d.trad_iv,
-        d.pred_dte, d.trad_dte,
-        d.pred_strike, d.trad_strike,
-        Math.abs(d.pred_dte - d.trad_dte),  // [6] term-structure mismatch in days
-      ]),
+      customdata: data.map(d => [d.pred_p, d.trad_p, d.K, d.pred_dte, d.trad_dte]),
       hovertemplate:
         "%{x|%Y-%m-%d %H:%M}<br>" +
-        "<b>" + pair.name + ": %{y:+.1f} vp</b><br>" +
-        "pred %{customdata[0]:.1f}% @ K%{customdata[4]:.0f} (%{customdata[2]:.0f}d)<br>" +
-        tradHover +
-        "<extra></extra>",
+        "<b>" + pair.name + ": %{y:+.1f} pp</b><br>" +
+        "K $%{customdata[2]:.1f}<br>" +
+        "pred P %{customdata[0]:.1f}% (%{customdata[3]:.0f}d)<br>" +
+        "trad P %{customdata[1]:.1f}% (%{customdata[4]:.0f}d)<extra></extra>",
     };
-  });
+  }).filter(Boolean);
 
   Plotly.react("chart-dispersion", traces, darkLayout({
-    title: { text: "Pred-market vs traditional ATM-IV spread (vol pts)" },
-    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "pred IV − trad IV", font: FONT }, ticksuffix: " vp", zeroline: true, zerolinecolor: "#3a4356" }),
+    title: { text: "P(WTI > K at expiry) · pred-market YES vs traditional digital (probability points)" },
+    yaxis: Object.assign(darkLayout().yaxis, {
+      title: { text: "pred P − trad P", font: FONT },
+      ticksuffix: " pp", zeroline: true, zerolinecolor: "#3a4356"
+    }),
   }), PLOTLY_OPTS);
 }
 
