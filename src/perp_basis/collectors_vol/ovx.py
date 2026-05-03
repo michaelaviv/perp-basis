@@ -27,6 +27,12 @@ log = logging.getLogger(__name__)
 
 VENUE = "ovx"
 PRODUCT = "wti"
+# OVX is a once-per-day EOD index (published ~4pm ET on US trading days).
+# 30h threshold = "show yesterday's print during trading hours; skip when no
+# new print for 2+ days (weekends, holidays)". Keeps the dashboard showing the
+# last known reading on weekday mornings but matches CBOE/USO's market-closed
+# behavior on weekends.
+STALE_THRESHOLD_SEC = 30 * 3600
 
 
 def _fetch_sync() -> tuple[float | None, float | None, datetime | None]:
@@ -70,6 +76,10 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
     age = 0
     if bar_ts is not None:
         age = max(0, int((ts - bar_ts).total_seconds()))
+        if age > STALE_THRESHOLD_SEC:
+            log.info("ovx: last print is %dh old (market closed) → skipping snapshot",
+                     age // 3600)
+            return []
 
     quote = StrikeQuote(
         strike=cl_val if cl_val is not None else 0.0,  # at-spot
