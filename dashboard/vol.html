@@ -629,17 +629,21 @@ async function _atmRows() {
 // ----- §3 ATM-30d time series -----
 async function renderAtmTs() {
   const rows = await _atmRows();
+  // Vol cron is 20-min cadence (vs basis 5-min) so series will always be sparse.
+  // Use lines+markers everywhere so single/few points are still visible, and
+  // size the gap threshold to be lenient (3 ticks of the 20-min cron).
+  const VOL_GAP_MS = 70 * 60 * 1000;
   const traces = VOL_VENUES.map(v => {
     const filt = rows.filter(r => r.venue === v);
     if (!filt.length) return null;
-    const { x, y } = withGaps(filt.map(r => ({ ts: r.ts, iv: r.mid_iv * 100 })), "ts", "iv", 60 * 60 * 1000);
+    const { x, y } = withGaps(filt.map(r => ({ ts: r.ts, iv: r.mid_iv * 100 })), "ts", "iv", VOL_GAP_MS);
     return {
       x, y,
       name: VENUE_LABEL[v],
-      mode: v === "ovx" ? "lines" : "lines+markers",
+      mode: "lines+markers",
       type: "scatter",
       line: { color: COLOR[v], width: 1.6, shape: "spline", smoothing: 0.4, dash: v === "ovx" ? "dash" : "solid" },
-      marker: v === "ovx" ? undefined : { color: COLOR[v], size: 5 },
+      marker: { color: COLOR[v], size: 6 },
       hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}%</b><extra>" + VENUE_LABEL[v] + "</extra>",
     };
   }).filter(Boolean);
@@ -665,12 +669,13 @@ async function renderDispersion() {
     dispRows.push({ ts, gap: (max - min) * 100 });
   }
   dispRows.sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const { x, y } = withGaps(dispRows, "ts", "gap", 60 * 60 * 1000);
+  const { x, y } = withGaps(dispRows, "ts", "gap", 70 * 60 * 1000);
   Plotly.react("chart-dispersion", [{
     x, y,
     name: "Dispersion",
-    mode: "lines", type: "scatter",
+    mode: "lines+markers", type: "scatter",
     line: { color: "#22d3ee", width: 1.8, shape: "spline", smoothing: 0.4 },
+    marker: { color: "#22d3ee", size: 6 },
     fill: "tozeroy", fillcolor: "rgba(34, 211, 238, .08)",
     hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> vol pts<extra></extra>",
   }], darkLayout({
@@ -755,7 +760,7 @@ async function renderVolDepth() {
   const venues = Array.from(new Set(rows.map(r => r.venue))).filter(v => v !== "ovx");
   const traces = venues.map(v => {
     const filt = rows.filter(r => r.venue === v);
-    const gapMs = mode === "daily" ? 2 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+    const gapMs = mode === "daily" ? 2 * 24 * 60 * 60 * 1000 : 70 * 60 * 1000;
     const { x, y } = withGaps(filt, "ts", "v", gapMs);
     if (mode === "daily") {
       return {
@@ -768,8 +773,9 @@ async function renderVolDepth() {
     }
     return {
       x, y, name: VENUE_LABEL[v] ?? v, type: "scatter",
-      mode: "lines",
+      mode: "lines+markers",
       line: { color: COLOR[v], width: 1.6, shape: "spline", smoothing: 0.4 },
+      marker: { color: COLOR[v], size: 6 },
       fill: "tozeroy", fillcolor: COLOR[v] + "1a",
       hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>$%{y:,.0f}</b><extra>" + (VENUE_LABEL[v] ?? v) + "</extra>",
     };
