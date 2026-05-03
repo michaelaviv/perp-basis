@@ -80,6 +80,35 @@ def _mid_prob(market: dict) -> float | None:
     return None
 
 
+async def _yes_bid_ask_from_orderbook(client: httpx.AsyncClient, ticker: str
+                                      ) -> tuple[float | None, float | None]:
+    """The /markets summary often has stale or null bid/ask even when there are
+    real resting orders. Hit /orderbook directly and derive the YES side from
+    both yes_dollars (YES bids) and no_dollars (NO bids → 1 − price = YES ask).
+    Returns (yes_bid, yes_ask) in dollars (i.e., probability units in [0, 1])."""
+    try:
+        r = await client.get(f"{BASE}/markets/{ticker}/orderbook", timeout=10.0)
+        r.raise_for_status()
+        ob = r.json().get("orderbook_fp", {}) or {}
+    except Exception:
+        return None, None
+
+    yes_bids = ob.get("yes_dollars") or []
+    no_bids = ob.get("no_dollars") or []
+    # Each row is ["0.34", "100.00"] — price as string, qty as string. Take max price.
+    def _max_price(rows):
+        if not rows:
+            return None
+        try:
+            return max(float(r[0]) for r in rows if r and r[0] is not None)
+        except (ValueError, TypeError, IndexError):
+            return None
+    yes_bid = _max_price(yes_bids)
+    no_bid_max = _max_price(no_bids)
+    yes_ask = (1.0 - no_bid_max) if no_bid_max is not None else None
+    return yes_bid, yes_ask
+
+
 def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     prob = _mid_prob(market)
     if prob is None or not (0.0 < prob < 1.0):
@@ -169,8 +198,27 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
     best_close = datetime.fromisoformat(best_expiry.replace("Z", "+00:00"))
     T_years = max((best_close.timestamp() - ts.timestamp()) / (365.25 * 86400), 1 / (365.25 * 24 * 60))
 
+    chosen = by_expiry[best_expiry]
+
+    # The /markets summary often returns yes_bid/yes_ask=null even when there
+    # are real resting orders. Backfill from the per-market /orderbook endpoint
+    # in parallel, then patch the summary dicts before inversion.
+    ob_results = await asyncio.gather(
+        *(_yes_bid_ask_from_orderbook(client, m["ticker"]) for m in chosen),
+        return_exceptions=True,
+    )
+    for m, ob in zip(chosen, ob_results, strict=True):
+        if isinstance(ob, BaseException):
+            continue
+        ob_bid, ob_ask = ob
+        # Express as cents (the /markets summary's units) so _mid_prob still works.
+        if m.get("yes_bid") is None and ob_bid is not None:
+            m["yes_bid"] = ob_bid * 100.0
+        if m.get("yes_ask") is None and ob_ask is not None:
+            m["yes_ask"] = ob_ask * 100.0
+
     quotes: list[StrikeQuote] = []
-    for m in by_expiry[best_expiry]:
+    for m in chosen:
         q = _quote_for(m, F, T_years)
         if q is not None:
             quotes.append(q)
