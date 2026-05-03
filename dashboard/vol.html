@@ -291,13 +291,13 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">4</span> Cross-venue dispersion</h2>
-    <p class="desc">max(IV) − min(IV) across venues at each timestamp, in vol points. Spikes = wide cross-venue disagreement = something to look at.</p>
+    <h2><span class="num">4</span> Pred-market vs traditional spread</h2>
+    <p class="desc">Pairwise ATM-IV spread (vol pts) between prediction markets (Kalshi, Polymarket) and traditional vol (CBOE/USO, OVX). The structural mismatch IS the trade — hover for each leg's strike, IV, and DTE.</p>
     <details class="howto"><summary>How to read this</summary>
       <div class="body">
-        <p><strong>One number for "how much do they disagree?".</strong> At each timestamp we take ATM IV across all four venues and compute the max-min spread. A flat low line means everyone is pricing vol the same way; a spike means at least one venue is way off the rest.</p>
-        <p><strong>Interpreting spikes.</strong> A spike doesn't tell you WHICH venue is the outlier — for that you need §3 above. But a spike on a day when nothing dramatic happened in spot is a structural sign: a prediction market hasn't repriced yet, or an option chain has stale quotes.</p>
-        <p><strong>The interesting question.</strong> When dispersion widens, does it mean-revert in hours, days, or never? After a few days of data, the time-to-revert tells you how durable the cross-venue carry is.</p>
+        <p><strong>Four pairs, two pred markets × two trad references.</strong> Solid = CBOE leg, dashed = OVX leg. Amber = Kalshi, purple = Polymarket. Each line is <em>pred IV − trad IV</em> in vol points; positive = the pred market is pricing higher vol than the traditional reference.</p>
+        <p><strong>Tenor matching.</strong> Pred markets have specific resolution dates — for the CBOE legs we pick the CBOE expiry closest to the pred market's expiry on each snapshot. OVX is a constant-30d index, so the OVX legs always include some term-structure mismatch when the pred market is far from 30d. Hover shows both legs' DTE so you can see when the comparison is loose.</p>
+        <p><strong>Not strict apples-to-apples — that's the point.</strong> Kalshi/Polymarket back-solve IV from binary range markets; CBOE is vanilla ATM; OVX is a model-free strip. The IV objects aren't identical, but the spread is the cross-instrument carry available to anyone willing to warehouse the structural difference.</p>
       </div>
     </details>
     <div id="chart-dispersion" class="chart"></div>
@@ -712,34 +712,109 @@ async function renderAtmTs() {
   }), PLOTLY_OPTS);
 }
 
-// ----- §4 Cross-venue dispersion -----
+// ----- §4 Pred-market vs traditional spread -----
+// Four pairwise spreads: {Kalshi, Polymarket} × {CBOE, OVX}.
+// CBOE leg is tenor-matched per snapshot (closest expiry to the pred market's).
+// OVX is constant-30d so OVX legs carry a known term-structure mismatch.
 async function renderDispersion() {
-  const rows = await _atmRows();
-  // Pivot in JS: for each ts, compute max(IV) - min(IV) across venues.
+  // ATM (closest-strike-to-spot) per (ts, venue, expiry) — one row per expiry,
+  // so we can choose which CBOE expiry to pair with each pred market.
+  const rows = await rowsOf(`
+    WITH atm_per_expiry AS (
+      SELECT ts, venue, expiry, underlying_px, strike, mid_iv,
+             ROW_NUMBER() OVER (
+               PARTITION BY ts, venue, expiry
+               ORDER BY abs(strike - underlying_px) ASC
+             ) AS rn
+      FROM vol_quotes WHERE mid_iv IS NOT NULL AND underlying_px IS NOT NULL
+    )
+    SELECT ts, venue, expiry, underlying_px, strike, mid_iv
+    FROM atm_per_expiry WHERE rn = 1
+    ORDER BY ts
+  `);
+
+  const PAIRS = [
+    { name: "Kalshi − CBOE",     pred: "kalshi",     trad: "cboe_uso", color: "#f59e0b", dash: "solid" },
+    { name: "Kalshi − OVX",      pred: "kalshi",     trad: "ovx",      color: "#f59e0b", dash: "dash"  },
+    { name: "Polymarket − CBOE", pred: "polymarket", trad: "cboe_uso", color: "#a78bfa", dash: "solid" },
+    { name: "Polymarket − OVX",  pred: "polymarket", trad: "ovx",      color: "#a78bfa", dash: "dash"  },
+  ];
+
+  // Group by ts → venue → [rows].
   const byTs = new Map();
   for (const r of rows) {
-    if (!byTs.has(r.ts)) byTs.set(r.ts, []);
-    byTs.get(r.ts).push(r.mid_iv);
+    if (!byTs.has(r.ts)) byTs.set(r.ts, new Map());
+    const v = byTs.get(r.ts);
+    if (!v.has(r.venue)) v.set(r.venue, []);
+    v.get(r.venue).push(r);
   }
-  const dispRows = [];
-  for (const [ts, ivs] of byTs.entries()) {
-    if (ivs.length < 2) continue;
-    const max = Math.max(...ivs), min = Math.min(...ivs);
-    dispRows.push({ ts, gap: (max - min) * 100 });
+
+  const seriesByPair = new Map(PAIRS.map(p => [p.name, []]));
+
+  for (const [ts, byVenue] of byTs.entries()) {
+    const tsMs = new Date(ts).getTime();
+    const dte = (e) => (new Date(e).getTime() - tsMs) / 86400000;
+
+    // Pred markets typically have one active expiry per snapshot; if multiple,
+    // take the nearest non-expired one (most active / most liquid).
+    const pickPred = (v) => {
+      const rs = (byVenue.get(v) || []).filter(r => dte(r.expiry) >= 0);
+      if (!rs.length) return null;
+      return rs.reduce((a, b) => dte(a.expiry) <= dte(b.expiry) ? a : b);
+    };
+    // CBOE: pick expiry closest to target DTE (the pred market's DTE).
+    const pickCboe = (targetDte) => {
+      const rs = byVenue.get("cboe_uso") || [];
+      if (!rs.length) return null;
+      return rs.reduce((a, b) =>
+        Math.abs(dte(a.expiry) - targetDte) <= Math.abs(dte(b.expiry) - targetDte) ? a : b
+      );
+    };
+    const ovx = (byVenue.get("ovx") || [])[0] || null;
+
+    for (const pair of PAIRS) {
+      const pred = pickPred(pair.pred);
+      if (!pred) continue;
+      const trad = pair.trad === "ovx" ? ovx : pickCboe(dte(pred.expiry));
+      if (!trad) continue;
+      seriesByPair.get(pair.name).push({
+        ts,
+        gap: (pred.mid_iv - trad.mid_iv) * 100,
+        pred_iv: pred.mid_iv * 100,
+        trad_iv: trad.mid_iv * 100,
+        pred_dte: dte(pred.expiry),
+        trad_dte: dte(trad.expiry),
+        pred_strike: pred.strike,
+        trad_strike: trad.strike,
+      });
+    }
   }
-  dispRows.sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const { x, y } = withGaps(dispRows, "ts", "gap", 70 * 60 * 1000);
-  Plotly.react("chart-dispersion", [{
-    x, y,
-    name: "Dispersion",
-    mode: "lines+markers", type: "scatter",
-    line: { color: "#22d3ee", width: 1.8, shape: "spline", smoothing: 0.4 },
-    marker: { color: "#22d3ee", size: 6 },
-    fill: "tozeroy", fillcolor: "rgba(34, 211, 238, .08)",
-    hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> vol pts<extra></extra>",
-  }], darkLayout({
-    title: { text: "Cross-venue ATM-IV dispersion (vol pts)" },
-    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "max(IV) − min(IV)", font: FONT }, ticksuffix: " vp" }),
+
+  const traces = PAIRS.map(pair => {
+    const data = seriesByPair.get(pair.name).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    const tradHover = pair.trad === "ovx"
+      ? "trad <b>OVX</b> %{customdata[1]:.1f}% (30d index)"
+      : "trad <b>CBOE</b> %{customdata[1]:.1f}% @ K%{customdata[5]:.0f} (%{customdata[3]:.0f}d)";
+    return {
+      x: data.map(d => d.ts),
+      y: data.map(d => d.gap),
+      name: pair.name,
+      mode: "lines+markers", type: "scatter",
+      line: { color: pair.color, width: 1.6, shape: "spline", smoothing: 0.4, dash: pair.dash },
+      marker: { color: pair.color, size: 5 },
+      customdata: data.map(d => [d.pred_iv, d.trad_iv, d.pred_dte, d.trad_dte, d.pred_strike, d.trad_strike]),
+      hovertemplate:
+        "%{x|%Y-%m-%d %H:%M}<br>" +
+        "<b>" + pair.name + ": %{y:+.1f} vp</b><br>" +
+        "pred %{customdata[0]:.1f}% @ K%{customdata[4]:.0f} (%{customdata[2]:.0f}d)<br>" +
+        tradHover +
+        "<extra></extra>",
+    };
+  });
+
+  Plotly.react("chart-dispersion", traces, darkLayout({
+    title: { text: "Pred-market vs traditional ATM-IV spread (vol pts)" },
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "pred IV − trad IV", font: FONT }, ticksuffix: " vp", zeroline: true, zerolinecolor: "#3a4356" }),
   }), PLOTLY_OPTS);
 }
 
