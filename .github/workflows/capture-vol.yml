@@ -42,9 +42,16 @@ jobs:
         run: |
           git config merge.ours.driver true
           # Only stage the vol-pipeline outputs so we don't accidentally
-          # commit work in flight from the basis pipeline. Use -f to skip
-          # any .gitignore filters; -A under the prefix to grab new files.
-          git add -A -- data/options_snapshots/ data/options_daily/ data/manifest.json data/vol_latest.json 2>&1 || echo "(some paths missing — ignoring)"
+          # commit work in flight from the basis pipeline. Stage each path
+          # independently so a missing-but-optional path (e.g. options_daily/
+          # before the first compaction) doesn't abort the whole add.
+          for p in data/options_snapshots data/options_daily data/manifest.json data/vol_latest.json; do
+            if [ -e "$p" ]; then
+              git add -A -- "$p"
+            else
+              echo "(skipping missing $p)"
+            fi
+          done
           echo "--- staged diff summary ---"
           git diff --cached --stat | tail -20
           if git diff --cached --quiet; then
