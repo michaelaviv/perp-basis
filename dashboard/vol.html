@@ -264,13 +264,14 @@
   </div>
 
   <section class="panel">
-    <h2><span class="num">2</span> Vol smile · CBOE chain vs prediction markets</h2>
-    <p class="desc">Each dot is one strike's IV (annualized %). CBOE/USO is the option-market reference; Kalshi and Polymarket are derived from binary prediction-market prices via lognormal CDF inversion. OVX is shown as a dashed horizontal anchor (single-number 30-day ATM IV). Dot size is proportional to log(1 + 24h notional) — thin strikes shrink visually.</p>
+    <h2><span class="num">2</span> Probability space · what each market actually prices</h2>
+    <p class="desc">Y-axis is probability, not IV. Each market is translated into the underlying probability it implies, with no IV-model assumption sitting in the middle. <strong>Survival lines</strong> (solid + circle markers) show <em>P(S<sub>T</sub> &gt; K)</em> — direct from Kalshi above-strike binaries and from CBOE digitals (N(d2) using mid_iv). <strong>Bucket segments</strong> (thick horizontal bars) show <em>P(K<sub>lo</sub> &lt; S<sub>T</sub> &lt; K<sub>hi</sub>)</em> — direct from range markets (Polymarket settle-at, Kalshi between). Dashed OVX line is a model-derived reference (lognormal at OVX 30d σ centered on spot). Each venue's tenor is in the legend.</p>
     <details class="howto"><summary>How to read this</summary>
       <div class="body">
-        <p><strong>The smile.</strong> Real option chains skew — wing strikes (deep OTM puts/calls) trade at higher IV than ATM, because tail outcomes are richer than a lognormal would predict. The shape of that smile encodes how the market prices tail risk.</p>
-        <p><strong>What we expect.</strong> Prediction markets typically price tails RICHER than option markets (thinner books, retail participation, no professional market-maker forcing convergence). So Kalshi/Polymarket dots should sit ABOVE the CBOE smile in the wings.</p>
-        <p><strong>Where the gap is biggest = best opportunity.</strong> A wide gap on a strike with real volume (big dot) is a tradeable dislocation — sell the rich vol on the prediction market, hedge with the cheaper option-market vol.</p>
+        <p><strong>Why probability space.</strong> Vanilla calls, binary "above" markets, range buckets, and "hit by" path-touch markets all price <em>different probabilities</em> over <em>different distributions</em>. Pushing them through an IV inversion forces them onto a common axis but at the cost of pretending the IV model holds for all of them. Plotting the raw probability they actually price avoids that fiction — at the cost of some venues showing different quantities (survival vs bucket density), which is the truth.</p>
+        <p><strong>Reading the survival lines.</strong> Each venue's solid line is its implied <em>P(S<sub>T</sub> &gt; K)</em> at that venue's expiry — monotonically decreasing in K. Two venues' lines crossing at a strike means they disagree about <em>P(S<sub>T</sub> &gt; that strike)</em> — and since the gap is in raw probability units, you can size the trade directly: buy the venue pricing it lower, sell the venue pricing it higher.</p>
+        <p><strong>Reading the bucket segments.</strong> A horizontal bar at level <em>p</em> spanning [<em>K<sub>lo</sub></em>, <em>K<sub>hi</sub></em>] means that venue prices <em>P(K<sub>lo</sub> &lt; S<sub>T</sub> &lt; K<sub>hi</sub>) = p</em>. Since P(S &gt; K<sub>lo</sub>) − P(S &gt; K<sub>hi</sub>) should equal that bucket prob, the bar should sit "inside" the gap between two CBOE survival points at K<sub>lo</sub> and K<sub>hi</sub>. When it doesn't, the venues disagree about that slice of the distribution.</p>
+        <p><strong>Tenor caveat (still real).</strong> Kalshi at ~5d and Polymarket at ~58d are pricing different distributions even on the same strike — long-dated WTI has more spread to either tail. The legend tags every venue's median DTE so this is visible at a glance, but no chart trick fixes it; the only honest cure is term-structure interpolation per venue, which Kalshi/Polymarket don't have enough expiries to support.</p>
       </div>
     </details>
     <div id="chart-smile" class="chart chart-tall"></div>
@@ -502,6 +503,55 @@ function probAboveCboeChain(quotes, F, T, K) {
   // digital ≈ -(C(K+) − C(K−)) / (K+ − K−)  =  (C(K−) − C(K+)) / (K+ − K−)
   const digital = (C_lo - C_hi) / (hi.K - lo.K);
   return Math.max(0, Math.min(1, digital));
+}
+
+// Standard normal CDF via Abramowitz-Stegun 7.1.26 erf approximation. Used
+// to convert CBOE vanilla IVs to digital probabilities P(S_T > K) = N(d2)
+// so the smile can be plotted in probability space alongside binaries.
+function normCdf(x) {
+  const sign = x < 0 ? -1 : 1;
+  const ax = Math.abs(x) / Math.SQRT2;
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+  const t = 1 / (1 + p * ax);
+  const erf = 1 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*Math.exp(-ax*ax);
+  return 0.5 * (1 + sign * erf);
+}
+
+// In probability space, "what does this market tell us about the distribution
+// of S_T?" splits into two cleanly different quantities:
+//   - terminal survival: P(S_T > K)              — Kalshi T-/less, CBOE digital
+//   - bucket probability: P(K_lo < S_T < K_hi)   — Kalshi B-, Polymarket settle-at
+// They are different things and should render differently, so we extract them
+// via two separate helpers and let the chart layer choose markers / shapes.
+function probSurvivalAt(r, T_years) {
+  // Kalshi greater: lo_strike set, hi_strike null, raw_prob = P(S > floor).
+  if (r.lo_strike != null && r.hi_strike == null && r.raw_prob != null) {
+    return { K: r.lo_strike, p: r.raw_prob };
+  }
+  // Kalshi less: hi_strike set, lo_strike null, raw_prob = P(S < cap).
+  if (r.lo_strike == null && r.hi_strike != null && r.raw_prob != null) {
+    return { K: r.hi_strike, p: 1 - r.raw_prob };
+  }
+  // CBOE vanilla: have mid_iv, no raw_prob — use BS digital N(d2).
+  // F is the underlying forward; for short tenors and oil we treat r=q=0,
+  // so F ≈ S and d2 = (ln(F/K) − ½σ²T) / (σ√T).
+  if (r.lo_strike == null && r.hi_strike == null && r.mid_iv != null && r.underlying_px != null) {
+    const sig = r.mid_iv, F = r.underlying_px, K = r.strike;
+    if (T_years > 0 && sig > 0) {
+      const d2 = (Math.log(F / K) - 0.5 * sig * sig * T_years) / (sig * Math.sqrt(T_years));
+      return { K, p: normCdf(d2) };
+    }
+  }
+  return null;
+}
+
+function probBucketAt(r) {
+  // Range/between markets: P(K_lo < S < K_hi) = raw_prob, plot as a horizontal
+  // segment from (lo, p) to (hi, p) at the bucket-prob level.
+  if (r.lo_strike != null && r.hi_strike != null && r.raw_prob != null) {
+    return { lo: r.lo_strike, hi: r.hi_strike, p: r.raw_prob };
+  }
+  return null;
 }
 
 // Insert null y between consecutive points >gapMs apart so Plotly draws a
@@ -737,25 +787,35 @@ function darkLayout(extra = {}) {
 }
 const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
 
-// ----- §2 Smile overlay (scrubbable through past 24h) -----
+// ----- §2 Probability-space chart (scrubbable through past 24h) -----
 //
-// Builds one Plotly frame per snapshot in the past 24h and exposes a slider
-// + Play/Pause so the user can watch how the cross-venue smile evolved (or
-// scrub to a specific moment). On weekends the latest frame may have only
-// pred-market dots — scrub left and CBOE/OVX reappear as you cross back into
-// the previous trading session. That's the correct behavior; a snapshot is
-// either fresh-as-of-capture (collector enforced) or absent.
+// Plots each venue's pricing translated into the underlying probability it
+// implies, instead of going through an IV inversion. This puts cross-family
+// markets (vanilla, binary above/below, bucket binary, OVX index) on one
+// axis without each family's IV-model assumptions in the middle.
+//
+// Two distinct quantities, each with its own visual encoding:
+//   1. Terminal survival P(S_T > K) — circle markers + line per venue.
+//      Sources: Kalshi T-/less single-threshold binaries (raw_prob direct);
+//               CBOE digitals derived from mid_iv via N(d2).
+//   2. Bucket probability P(K_lo < S_T < K_hi) — horizontal segments at
+//      bucket-prob level, no connecting line (it is a different quantity).
+//      Sources: Kalshi B- between binaries; Polymarket settle-at ranges.
+//
+// OVX would need a model assumption (assume lognormal centered on spot) to
+// translate to a curve, so we draw it as a reference dashed survival curve
+// using OVX's 30d ATM IV as σ — useful as a visual baseline but explicitly
+// model-derived, not a price.
 async function renderSmile() {
-  // Pull all quotes from snapshots in the last 24 hours of the loaded range.
-  // Cast ts to plain TIMESTAMP for the INTERVAL arithmetic — DuckDB-WASM
-  // doesn't have a `TIMESTAMP WITH TIME ZONE − INTERVAL` overload.
+  // Pull all quotes from snapshots in the last 24 hours. Cast ts to plain
+  // TIMESTAMP for INTERVAL arithmetic — DuckDB-WASM has no
+  // `TIMESTAMP WITH TIME ZONE − INTERVAL` overload.
   const rows = await rowsOf(`
     SELECT * FROM vol_quotes
-    WHERE mid_iv IS NOT NULL
+    WHERE (mid_iv IS NOT NULL OR raw_prob IS NOT NULL)
       AND ts::TIMESTAMP >= (SELECT max(ts::TIMESTAMP) - INTERVAL '24 hours' FROM vol_quotes)
   `);
 
-  // Group quotes by snapshot timestamp.
   const byTs = new Map();
   for (const r of rows) {
     if (!byTs.has(r.ts)) byTs.set(r.ts, []);
@@ -764,27 +824,33 @@ async function renderSmile() {
   const tsKeys = Array.from(byTs.keys()).sort();
   if (!tsKeys.length) {
     Plotly.react("chart-smile", [], darkLayout({
-      title: { text: "WTI · vol smile · no data in last 24h" }
+      title: { text: "WTI · probability space · no data in last 24h" }
     }), PLOTLY_OPTS);
     return;
   }
 
   // Stable trace skeleton — same names/order across frames so Plotly's slider
-  // animation can swap data values cleanly. One trace per (venue, kind):
-  //   - single-sided strikes: circle marker
-  //   - range markets:        diamond marker
-  //   - OVX:                  dashed horizontal line
+  // can swap data values cleanly. Per non-OVX venue: (survival, bucket); plus
+  // an OVX reference curve at the end.
   const VENUES_NON_OVX = VOL_VENUES.filter(v => v !== "ovx");
   const TRACES_SPEC = [];
   for (const v of VENUES_NON_OVX) {
-    TRACES_SPEC.push({ key: `${v}_single`, venue: v, kind: "single",
-                       name: VENUE_LABEL[v], symbol: "circle" });
-    TRACES_SPEC.push({ key: `${v}_range`, venue: v, kind: "range",
-                       name: VENUE_LABEL[v] + " (range)", symbol: "diamond" });
+    TRACES_SPEC.push({ key: `${v}_surv`,   venue: v, kind: "survival" });
+    TRACES_SPEC.push({ key: `${v}_bucket`, venue: v, kind: "bucket"   });
   }
-  TRACES_SPEC.push({ key: "ovx_line", venue: "ovx", kind: "line", name: "OVX" });
+  TRACES_SPEC.push({ key: "ovx_curve", venue: "ovx", kind: "ovx_curve" });
 
-  const sizeFor = (r) => 6 + Math.min(18, Math.log10(1 + (r.volume_24h_usd ?? 0)) * 3.5);
+  const sizeFor = (r) => 6 + Math.min(16, Math.log10(1 + (r.volume_24h_usd ?? 0)) * 3.0);
+  const dteFor = (r) => {
+    if (!r.expiry || !r.ts) return null;
+    return (new Date(r.expiry).getTime() - new Date(r.ts).getTime()) / 86400000;
+  };
+  const tenorTag = (filt) => {
+    const dtes = filt.map(dteFor).filter(Number.isFinite);
+    if (!dtes.length) return "";
+    const median = dtes.sort((a, b) => a - b)[Math.floor(dtes.length / 2)];
+    return ` [${median < 1 ? median.toFixed(1) : median.toFixed(0)}d]`;
+  };
 
   function buildTracesForTs(ts) {
     const tsRows = byTs.get(ts) || [];
@@ -792,56 +858,95 @@ async function renderSmile() {
     let xMin = Infinity, xMax = -Infinity;
 
     for (const spec of TRACES_SPEC) {
-      if (spec.kind === "line") { traces.push(null); continue; }  // OVX placeholder
-      const filtered = tsRows.filter(r => {
-        if (r.venue !== spec.venue) return false;
-        const isRange = r.lo_strike != null && r.hi_strike != null;
-        return spec.kind === "range" ? isRange : !isRange;
-      });
-      for (const r of filtered) {
-        if (r.strike < xMin) xMin = r.strike;
-        if (r.strike > xMax) xMax = r.strike;
-      }
-      if (spec.kind === "range") {
+      if (spec.kind === "ovx_curve") { traces.push(null); continue; }  // filled below
+      const venueRows = tsRows.filter(r => r.venue === spec.venue);
+      const tag = tenorTag(venueRows);
+
+      if (spec.kind === "survival") {
+        // Compute median DTE for this venue's snapshot to get T in years.
+        const dtes = venueRows.map(dteFor).filter(Number.isFinite);
+        const T_years = dtes.length
+          ? Math.max(dtes.sort((a, b) => a - b)[Math.floor(dtes.length / 2)] / 365.25, 1 / (365.25 * 24))
+          : 30 / 365.25;
+        const points = venueRows.map(r => {
+          const s = probSurvivalAt(r, T_years);
+          return s ? { K: s.K, p: s.p, vol: r.volume_24h_usd ?? 0, raw: r } : null;
+        }).filter(Boolean).sort((a, b) => a.K - b.K);
+        for (const pt of points) {
+          if (pt.K < xMin) xMin = pt.K;
+          if (pt.K > xMax) xMax = pt.K;
+        }
         traces.push({
-          x: filtered.map(r => r.strike),
-          y: filtered.map(r => r.mid_iv * 100),
-          name: spec.name,
-          mode: "markers", type: "scatter",
-          marker: { color: COLOR[spec.venue], size: filtered.map(sizeFor), opacity: 0.7,
-                    symbol: spec.symbol, line: { color: COLOR[spec.venue], width: 1.4 } },
-          customdata: filtered.map(r => [r.volume_24h_usd ?? 0, r.lo_strike, r.hi_strike]),
-          hovertemplate: "<b>" + spec.name + "</b><br>Range %{customdata[1]:.1f}–%{customdata[2]:.1f}<br>"
-                         + "Mid: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata[0]|$,.0f}<extra></extra>",
+          x: points.map(p => p.K),
+          y: points.map(p => p.p * 100),
+          name: VENUE_LABEL[spec.venue] + " survival" + tag,
+          mode: points.length > 1 ? "lines+markers" : "markers",
+          type: "scatter",
+          line: { color: COLOR[spec.venue], width: 1.4, shape: "spline", smoothing: 0.4 },
+          marker: { color: COLOR[spec.venue], size: points.map(p => sizeFor({ volume_24h_usd: p.vol })),
+                    opacity: 0.85, symbol: "circle", line: { color: COLOR[spec.venue], width: 1 } },
+          customdata: points.map(p => [p.vol]),
+          hovertemplate: "<b>" + VENUE_LABEL[spec.venue] + "</b><br>"
+                         + "K $%{x:.2f}<br>P(S<sub>T</sub> > K) = %{y:.1f}%<br>"
+                         + "24h vol: %{customdata[0]|$,.0f}<extra></extra>",
         });
-      } else {
+      } else if (spec.kind === "bucket") {
+        const buckets = venueRows.map(r => {
+          const b = probBucketAt(r);
+          return b ? { ...b, vol: r.volume_24h_usd ?? 0 } : null;
+        }).filter(Boolean);
+        // Build segments: [lo, hi, null, lo, hi, null, ...]
+        const x = [], y = [], cd = [];
+        for (const b of buckets) {
+          if (b.lo < xMin) xMin = b.lo;
+          if (b.hi > xMax) xMax = b.hi;
+          x.push(b.lo, b.hi, null);
+          y.push(b.p * 100, b.p * 100, null);
+          cd.push([b.lo, b.hi, b.vol], [b.lo, b.hi, b.vol], [null, null, null]);
+        }
         traces.push({
-          x: filtered.map(r => r.strike),
-          y: filtered.map(r => r.mid_iv * 100),
-          name: spec.name,
-          mode: "markers", type: "scatter",
-          marker: { color: COLOR[spec.venue], size: filtered.map(sizeFor), opacity: 0.7,
-                    symbol: spec.symbol, line: { color: COLOR[spec.venue], width: 1 } },
-          customdata: filtered.map(r => r.volume_24h_usd ?? 0),
-          hovertemplate: "<b>" + spec.name + "</b><br>K $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata|$,.0f}<extra></extra>",
+          x, y,
+          name: VENUE_LABEL[spec.venue] + " bucket" + tag,
+          mode: "lines+markers", type: "scatter",
+          line: { color: COLOR[spec.venue], width: 3 },
+          marker: { color: COLOR[spec.venue], size: 5, symbol: "line-ns-open",
+                    line: { color: COLOR[spec.venue], width: 2 } },
+          opacity: 0.55,
+          customdata: cd,
+          hovertemplate: "<b>" + VENUE_LABEL[spec.venue] + " bucket</b><br>"
+                         + "$%{customdata[0]:.1f} &lt; S<sub>T</sub> &lt; $%{customdata[1]:.1f}<br>"
+                         + "P = %{y:.1f}%<br>"
+                         + "24h vol: %{customdata[2]|$,.0f}<extra></extra>",
         });
       }
     }
-    // Now fill in OVX (we needed xMin/xMax from the other traces first).
-    const ovxRow = tsRows.find(r => r.venue === "ovx");
+
+    // OVX reference curve: assume lognormal with σ = OVX 30d IV centered on
+    // current spot. Explicitly model-derived; useful only as a visual baseline.
+    const ovxRow = tsRows.find(r => r.venue === "ovx" && r.mid_iv != null);
     const ovxIdx = traces.findIndex(t => t === null);
-    if (ovxRow && Number.isFinite(xMin)) {
-      const iv = ovxRow.mid_iv * 100;
+    if (ovxRow && Number.isFinite(xMin) && xMax > xMin) {
+      const sig = ovxRow.mid_iv;
+      const F = ovxRow.underlying_px;
+      const T = 30 / 365.25;  // OVX is constant 30d
+      const xs = [], ys = [];
+      const N = 80;
+      for (let i = 0; i <= N; i++) {
+        const K = xMin + (xMax - xMin) * (i / N);
+        const d2 = (Math.log(F / K) - 0.5 * sig * sig * T) / (sig * Math.sqrt(T));
+        xs.push(K);
+        ys.push(normCdf(d2) * 100);
+      }
       traces[ovxIdx] = {
-        x: [xMin, xMax], y: [iv, iv],
-        name: `OVX (${iv.toFixed(1)}%)`,
+        x: xs, y: ys,
+        name: `OVX implied curve [30d, σ=${(sig*100).toFixed(0)}%]`,
         mode: "lines", type: "scatter",
-        line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
+        line: { color: COLOR.ovx, width: 1.4, dash: "dash" },
         hoverinfo: "name",
       };
     } else {
       traces[ovxIdx] = { x: [], y: [], name: "OVX (n/a)", mode: "lines", type: "scatter",
-                        line: { color: COLOR.ovx, width: 1.6, dash: "dash" } };
+                        line: { color: COLOR.ovx, width: 1.4, dash: "dash" } };
     }
     return traces;
   }
@@ -861,10 +966,10 @@ async function renderSmile() {
   }));
 
   const layout = darkLayout({
-    title: { text: `WTI · vol smile by strike (%) — scrub the slider for past 24h (${frames.length} snapshots)` },
+    title: { text: `WTI · probability space by strike — scrub for past 24h (${frames.length} snapshots)` },
     margin: { t: 36, r: 16, l: 50, b: 110 },  // extra bottom space for slider + buttons
-    xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Strike ($)", font: FONT } }),
-    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Implied vol (% annualized)", font: FONT }, ticksuffix: "%" }),
+    xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Strike K ($)", font: FONT } }),
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Probability", font: FONT }, ticksuffix: "%", range: [0, 100] }),
     sliders: [{
       active: tsKeys.length - 1,
       steps: sliderSteps,
