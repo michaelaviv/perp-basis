@@ -11,6 +11,13 @@ For each snapshot:
 - Convert USO strike to a notional crude-price strike via current spot ratio
   (USO_strike / USO_spot * CL=F_spot) so the smile is plotted on the same
   x-axis as Kalshi/Polymarket markets.
+
+Market hours: CBOE-listed options on USO trade 9:30am-4:00pm ET on US
+equity-market days. Outside those hours yfinance returns the most recent
+session's quotes, frozen. We compute the freshness from the chain's max
+`lastTradeDate` and SKIP the snapshot entirely (return []) when it's older
+than `STALE_THRESHOLD_SEC` — otherwise we'd ingest 200+ duplicate rows
+over a weekend and distort the §3/§4/§6 time-series sections.
 """
 
 from __future__ import annotations
@@ -30,6 +37,11 @@ VENUE = "cboe_uso"
 PRODUCT = "wti"
 ETF_TICKER = "USO"
 TARGET_TENOR_DAYS = 30
+# Skip the snapshot if the freshest strike trade is older than this. Tuned to
+# catch "market closed for hours" without false-skipping illiquid strikes
+# during RTH (USO option chain has trades on most strikes within ~30 min during
+# RTH; 4 hours is the conservative gap that says the market is genuinely shut).
+STALE_THRESHOLD_SEC = 4 * 3600
 
 
 def _f(v) -> float | None:
@@ -45,8 +57,10 @@ def _f(v) -> float | None:
 
 
 def _fetch_chain_sync() -> dict:
-    """Sync yfinance fetch. Returns dict with keys: uso_spot, cl_spot, expiry, calls, puts.
-    Returns {} on failure. `calls`/`puts` are pandas DataFrames."""
+    """Sync yfinance fetch. Returns dict with keys: uso_spot, cl_spot, expiry,
+    calls, puts, max_trade_ts. Returns {} on failure. `calls`/`puts` are pandas
+    DataFrames."""
+    import pandas as pd
     import yfinance as yf
 
     out: dict = {}
@@ -82,6 +96,19 @@ def _fetch_chain_sync() -> dict:
         chain = uso_t.option_chain(best)
         out["calls"] = chain.calls
         out["puts"] = chain.puts
+
+        # Freshness: the most recent trade across all strikes (calls + puts).
+        # Used by collect() to skip the snapshot when the market is closed.
+        max_ts = None
+        for df in (chain.calls, chain.puts):
+            if df is None or "lastTradeDate" not in df.columns:
+                continue
+            col = pd.to_datetime(df["lastTradeDate"], utc=True, errors="coerce")
+            col_max = col.max()
+            if pd.notna(col_max) and (max_ts is None or col_max > max_ts):
+                max_ts = col_max
+        if max_ts is not None:
+            out["max_trade_ts"] = max_ts.to_pydatetime()
     except Exception as e:
         log.warning("cboe_uso: chain fetch failed: %s", e)
     return out
@@ -95,8 +122,20 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
     expiry = data.get("expiry")
     calls = data.get("calls")
     puts = data.get("puts")
+    max_trade_ts = data.get("max_trade_ts")
     if not (uso_spot and expiry and calls is not None):
         return []
+
+    # Skip the snapshot when the freshest strike trade is older than the
+    # threshold — the market is closed and the chain is the previous session's
+    # frozen state. Capturing it would just store duplicate rows for hours.
+    age_sec = 0
+    if max_trade_ts is not None:
+        age_sec = max(0, int((ts - max_trade_ts).total_seconds()))
+        if age_sec > STALE_THRESHOLD_SEC:
+            log.info("cboe_uso: chain is %dh old (market closed) → skipping snapshot",
+                     age_sec // 3600)
+            return []
 
     # Conversion factor from USO strike → notional crude price.
     # If we don't have CL=F spot, fall back to plotting on the USO strike axis
@@ -158,6 +197,6 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
             underlying_px=cl_spot,
             quotes=quotes,
             total_volume_24h_usd=total_vol_usd,
-            data_age_sec=0,
+            data_age_sec=age_sec,
         )
     ]

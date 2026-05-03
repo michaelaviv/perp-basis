@@ -462,18 +462,35 @@ async function renderNow() {
     return best?.mid_iv ?? null;
   }
 
+  function fmtAge(sec) {
+    if (sec == null) return "<small>—</small>";
+    if (sec === 0) return "<small>live</small>";
+    if (sec < 30 * 60) return `<small>${Math.round(sec / 60)}m old</small>`;
+    if (sec < 24 * 3600) return `<small style="color:var(--warn)">${Math.round(sec / 3600)}h old</small>`;
+    return `<small style="color:var(--warn)">${Math.round(sec / (24 * 3600))}d old</small>`;
+  }
+
   const cards = VOL_VENUES.map(v => {
     const r = byVenue.get(v);
+    if (!r) {
+      // Venue collector returned no rows in this snapshot — usually because
+      // the underlying market is closed (CBOE option chain on weekends).
+      return `
+        <div class="vol-card">
+          <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
+          <div class="iv" style="color:var(--text-2);font-size:1rem;font-weight:500">market closed</div>
+          <div class="meta-line">no fresh quotes this snapshot</div>
+          <div class="vol24"></div>
+        </div>`;
+    }
     const atm = atmFor(r);
-    const ageMin = r?.data_age_sec != null ? Math.round(r.data_age_sec / 60) : 0;
-    const ageNote = ageMin > 30 ? `<small style="color:var(--warn)">${ageMin}m old</small>` : (ageMin > 0 ? `<small>${ageMin}m old</small>` : "<small>live</small>");
-    const expiry = r?.expiry ?? "—";
+    const expiry = r.expiry ?? "—";
     return `
       <div class="vol-card">
         <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
         <div class="iv">${fmtIv(atm)}</div>
-        <div class="meta-line">expiry ${expiry} · ${ageNote}</div>
-        <div class="vol24">${r?.total_volume_24h_usd != null ? "24h vol " + fmtUsd(r.total_volume_24h_usd) : ""}</div>
+        <div class="meta-line">expiry ${expiry} · ${fmtAge(r.data_age_sec)}</div>
+        <div class="vol24">${r.total_volume_24h_usd != null ? "24h vol " + fmtUsd(r.total_volume_24h_usd) : ""}</div>
       </div>`;
   }).join("");
 
