@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vol Basis — WTI implied vol</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #07090f;
+    --bg-2: #0c1018;
+    --surface: #131826;
+    --surface-2: #1a2030;
+    --border: #232a3b;
+    --border-strong: #2e3650;
+    --text: #e6e8ee;
+    --text-2: #a0a8bd;
+    --muted: #6b7385;
+    --accent: #22d3ee;
+    --accent-2: #818cf8;
+    --pos: #10b981;
+    --neg: #ef4444;
+    --warn: #f59e0b;
+    --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgba(34, 211, 238, .08), transparent 60%),
+      radial-gradient(900px 500px at -10% 30%, rgba(129, 140, 248, .06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'tnum'; }
+  .container { max-width: 1320px; margin: 0 auto; padding: 1.25rem; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap; padding: 1rem 1.25rem;
+    background: linear-gradient(180deg, rgba(34,211,238,.04), transparent);
+    border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow); margin-bottom: 1.25rem;
+  }
+  .brand { display: flex; align-items: center; gap: .9rem; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: conic-gradient(from 200deg, var(--accent), var(--accent-2), #f59e0b, var(--accent));
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 6px 18px rgba(34,211,238,.25);
+  }
+  .brand h1 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: .2px; }
+  .brand p { margin: 0; color: var(--text-2); font-size: .8rem; }
+  .nav-link {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .35rem .7rem; border-radius: 8px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--text-2); font-size: .8rem; text-decoration: none;
+    transition: all .12s ease;
+  }
+  .nav-link:hover { color: var(--text); border-color: var(--border-strong); }
+  .live-pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .2rem .6rem; border-radius: 999px;
+    background: rgba(16, 185, 129, .12); color: var(--pos);
+    font-weight: 600; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase;
+    border: 1px solid rgba(16, 185, 129, .25);
+  }
+  .live-pill .dot { width: 6px; height: 6px; background: var(--pos); border-radius: 999px;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, .55); animation: pulse 1.6s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .55); }
+    70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+  .topbar-meta { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .meta { font-size: .8rem; color: var(--text-2); }
+  .meta strong { color: var(--text); font-weight: 500; }
+
+  /* Now panel — vol-specific layout */
+  .vol-now {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow); margin-bottom: 1.25rem; overflow: hidden;
+  }
+  .vol-now-header {
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap;
+  }
+  .vol-now-header h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .vol-now-header .product { font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
+  .vol-now-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+  @media (max-width: 900px) { .vol-now-grid { grid-template-columns: repeat(2, 1fr); } }
+  .vol-card {
+    padding: 1rem 1.25rem; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  .vol-card:last-child { border-right: 0; }
+  .vol-card .venue {
+    display: inline-flex; align-items: center; gap: .5rem; font-weight: 500; font-size: .85rem;
+  }
+  .vol-card .venue .swatch { width: 8px; height: 8px; border-radius: 999px; }
+  .vol-card .iv {
+    font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum';
+    font-size: 1.5rem; font-weight: 600; margin-top: .5rem;
+  }
+  .vol-card .meta-line { color: var(--text-2); font-size: .75rem; margin-top: .15rem; }
+  .vol-card .vol24 { color: var(--text-2); font-size: .75rem; margin-top: .25rem; font-family: 'JetBrains Mono', monospace; }
+  .vol-now-footer {
+    padding: .75rem 1.25rem; background: var(--bg-2); display: flex; justify-content: space-between; gap: 1rem;
+  }
+  .gap-headline { font-size: .9rem; }
+  .gap-headline strong { font-family: 'JetBrains Mono', monospace; }
+
+  /* toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    padding: .75rem 1rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; margin-bottom: 1.25rem;
+  }
+  .toolbar label { font-size: .8rem; color: var(--text-2); display: inline-flex; align-items: center; gap: .4rem; }
+  .toolbar input[type="date"] {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .35rem .55rem; font: inherit; font-size: .85rem; color-scheme: dark;
+  }
+  .toolbar input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .preset {
+    background: var(--bg-2); color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .35rem .65rem; font: inherit; font-size: .8rem; cursor: pointer;
+    transition: all .12s ease;
+  }
+  .preset:hover { border-color: var(--border-strong); color: var(--text); }
+  .preset.active { background: rgba(34, 211, 238, .12); border-color: rgba(34, 211, 238, .4); color: var(--accent); }
+  .btn {
+    background: var(--accent); color: #0a0e1a; border: none; border-radius: 8px;
+    padding: .4rem .9rem; font: inherit; font-weight: 600; font-size: .82rem; cursor: pointer;
+    transition: all .12s ease;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .toolbar-spacer { flex: 1; }
+  .status { font-size: .75rem; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+
+  /* sections */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: var(--shadow);
+  }
+  .panel h2 { margin: 0 0 .25rem; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: .55rem; }
+  .panel h2 .num {
+    display: inline-grid; place-items: center; width: 22px; height: 22px;
+    border-radius: 6px; background: rgba(34, 211, 238, .12);
+    color: var(--accent); font-size: .72rem; font-weight: 700;
+  }
+  .panel p.desc { margin: 0 0 .85rem; color: var(--text-2); font-size: .85rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .chart { width: 100%; height: 360px; background: var(--bg-2); border-radius: 10px; padding: .25rem; }
+  .chart-tall { height: 460px; }
+
+  .section-filters {
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    margin: 0 0 .75rem 0;
+  }
+  .section-filters label { font-size: .78rem; color: var(--text-2); display: inline-flex; align-items: center; gap: .4rem; }
+  .section-filters select {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .3rem .5rem; font: inherit; font-size: .8rem; color-scheme: dark; cursor: pointer;
+  }
+  .section-filters select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .table-wrap { overflow-x: auto; border-radius: 10px; background: var(--bg-2); }
+  table.events { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  table.events th, table.events td { padding: .5rem .75rem; text-align: left; }
+  table.events thead th {
+    background: var(--surface-2); color: var(--text-2);
+    font-weight: 500; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  table.events tbody tr { border-bottom: 1px solid var(--border); }
+  table.events tbody tr:last-child { border-bottom: 0; }
+  table.events tbody tr:hover { background: rgba(255, 255, 255, .015); }
+  table.events td.mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; }
+  table.events td.gap { font-weight: 600; }
+  table.events td.gap.pos { color: var(--pos); }
+  table.events td.gap.neg { color: var(--neg); }
+
+  details.howto { margin: .25rem 0 .85rem; font-size: .82rem; color: var(--text-2); }
+  details.howto > summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .4rem;
+    padding: .25rem .65rem; border-radius: 6px;
+    background: var(--bg-2); border: 1px solid var(--border);
+    color: var(--text-2); font-weight: 500; font-size: .78rem; user-select: none;
+    transition: all .12s ease;
+  }
+  details.howto > summary::-webkit-details-marker { display: none; }
+  details.howto > summary::before {
+    content: "▸"; font-size: .65rem; transition: transform .15s ease; color: var(--accent);
+  }
+  details.howto[open] > summary::before { transform: rotate(90deg); }
+  details.howto > summary:hover { color: var(--text); border-color: var(--border-strong); }
+  details.howto > .body {
+    margin-top: .65rem; padding: .75rem .9rem;
+    border-left: 2px solid var(--accent);
+    background: rgba(34, 211, 238, .03); border-radius: 0 8px 8px 0; line-height: 1.55;
+  }
+  details.howto > .body p { margin: 0 0 .5rem; }
+  details.howto > .body p:last-child { margin-bottom: 0; }
+
+  footer { color: var(--muted); font-size: .75rem; padding: .5rem 0 1.5rem; text-align: center; }
+  footer a { color: var(--text-2); text-decoration: none; border-bottom: 1px dotted var(--border-strong); }
+  footer a:hover { color: var(--accent); }
+  .empty { padding: 2rem; text-align: center; color: var(--text-2); }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1>Vol Basis</h1>
+        <p>WTI implied vol · CBOE/USO · Kalshi · Polymarket · OVX anchor</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <a href="basis.html" class="nav-link">← Perp Basis</a>
+      <span class="live-pill"><span class="dot"></span> Live</span>
+      <span class="meta">Last snapshot <strong id="now-ts">—</strong></span>
+    </div>
+  </div>
+
+  <div id="vol-now-container">
+    <div class="empty">Loading latest vol snapshot…</div>
+  </div>
+
+  <div class="toolbar">
+    <label>From <input type="date" id="start"></label>
+    <label>To <input type="date" id="end"></label>
+    <button class="preset" data-days="1">24h</button>
+    <button class="preset" data-days="7">7d</button>
+    <button class="preset" data-days="30">30d</button>
+    <button class="btn" id="reload">Reload</button>
+    <span class="toolbar-spacer"></span>
+    <span class="status" id="status">idle</span>
+  </div>
+
+  <section class="panel">
+    <h2><span class="num">2</span> Vol smile · CBOE chain vs prediction markets</h2>
+    <p class="desc">Each dot is one strike's IV (annualized %). CBOE/USO is the option-market reference; Kalshi and Polymarket are derived from binary prediction-market prices via lognormal CDF inversion. OVX is shown as a dashed horizontal anchor (single-number 30-day ATM IV). Dot size is proportional to log(1 + 24h notional) — thin strikes shrink visually.</p>
+    <details class="howto"><summary>How to read this</summary>
+      <div class="body">
+        <p><strong>The smile.</strong> Real option chains skew — wing strikes (deep OTM puts/calls) trade at higher IV than ATM, because tail outcomes are richer than a lognormal would predict. The shape of that smile encodes how the market prices tail risk.</p>
+        <p><strong>What we expect.</strong> Prediction markets typically price tails RICHER than option markets (thinner books, retail participation, no professional market-maker forcing convergence). So Kalshi/Polymarket dots should sit ABOVE the CBOE smile in the wings.</p>
+        <p><strong>Where the gap is biggest = best opportunity.</strong> A wide gap on a strike with real volume (big dot) is a tradeable dislocation — sell the rich vol on the prediction market, hedge with the cheaper option-market vol.</p>
+      </div>
+    </details>
+    <div id="chart-smile" class="chart chart-tall"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">3</span> ATM-30d IV · time series</h2>
+    <p class="desc">At-the-money IV (~spot strike) for each venue over time. Tracks whether the cross-venue gap is widening, narrowing, or stable.</p>
+    <div id="chart-atm-ts" class="chart"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">4</span> Cross-venue dispersion</h2>
+    <p class="desc">max(IV) − min(IV) across venues at each timestamp, in vol points. Spikes = wide cross-venue disagreement = something to look at.</p>
+    <div id="chart-dispersion" class="chart"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">5</span> Top IV-dislocation events</h2>
+    <p class="desc">Largest pred-mkt-vs-CBOE gaps in the selected range. "vs CBOE" = pred-mkt IV − nearest CBOE strike IV (positive = pred-mkt richer).</p>
+    <div class="section-filters">
+      <label>Venue
+        <select id="events-venue">
+          <option value="">All pred-mkt</option>
+          <option value="kalshi">Kalshi</option>
+          <option value="polymarket">Polymarket</option>
+        </select>
+      </label>
+      <label>Min 24h vol
+        <select id="events-minvol">
+          <option value="0">No filter</option>
+          <option value="100" selected>$100+</option>
+          <option value="1000">$1k+</option>
+          <option value="10000">$10k+</option>
+        </select>
+      </label>
+    </div>
+    <div class="table-wrap">
+      <table class="events" id="events-table"><tbody><tr><td class="empty">Loading…</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><span class="num">6</span> Vol-market depth · 24h notional volume per venue</h2>
+    <p class="desc">Total 24h notional traded per venue. Tells you whether the prediction-market smile is actually tradeable — a 10-vol-point dislocation on a $100/day market isn't a real opportunity.</p>
+    <div class="section-filters" id="volume-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Mode:</span>
+      <button class="preset active" data-vol-mode="live">Live (per-snapshot)</button>
+      <button class="preset" data-vol-mode="daily">Daily avg</button>
+    </div>
+    <div id="chart-vol-depth" class="chart"></div>
+  </section>
+
+  <footer>
+    Data: <a id="data-link" target="_blank" rel="noopener">perp-basis</a> · Vol pipeline · 20-min cron via GitHub Actions · DuckDB-WASM &amp; Plotly · client-side, zero backend
+  </footer>
+
+</div>
+
+<script type="module">
+import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
+
+const GH_USER = "michaelaviv";
+const GH_REPO = "perp-basis";
+const BRANCH  = "main";
+
+const IS_LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
+const RAW = IS_LOCAL ? ".." : `https://raw.githubusercontent.com/${GH_USER}/${GH_REPO}/${BRANCH}`;
+document.getElementById("data-link").href = `https://github.com/${GH_USER}/${GH_REPO}`;
+
+const setStatus = (s) => { document.getElementById("status").textContent = s; };
+
+setStatus("booting DuckDB…");
+const JSDELIVR = duckdb.getJsDelivrBundles();
+const bundle = await duckdb.selectBundle(JSDELIVR);
+const workerUrl = URL.createObjectURL(
+  new Blob([`importScripts("${bundle.mainWorker}");`], { type: "application/javascript" })
+);
+const worker = new Worker(workerUrl);
+const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+URL.revokeObjectURL(workerUrl);
+const conn = await db.connect();
+setStatus("DuckDB ready");
+
+async function fetchJson(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return r.json();
+}
+async function loadParquet(url, name) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  await db.registerFileBuffer(name, buf);
+}
+const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtIv = (x) => (x == null || isNaN(x)) ? "—" : (x * 100).toFixed(1) + "%";
+const fmtUsd = (x) => (x == null || isNaN(x)) ? "—" : "$" + Number(x).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+const VOL_VENUES = ["cboe_uso", "ovx", "kalshi", "polymarket"];
+const COLOR = {
+  cboe_uso:   "#29c481",  // green — TradFi reference (matches Hyperliquid in basis.html)
+  ovx:        "#6b7280",  // grey — anchor reference line
+  kalshi:     "#f59e0b",  // amber — prediction market
+  polymarket: "#a78bfa",  // purple — prediction market
+};
+const VENUE_LABEL = {
+  cboe_uso:   "CBOE/USO",
+  ovx:        "OVX",
+  kalshi:     "Kalshi",
+  polymarket: "Polymarket",
+};
+
+// Insert null y between consecutive points >gapMs apart so Plotly draws a
+// visible break instead of interpolating across a capture pause.
+function withGaps(rows, tsKey, valueKey, gapMs = 60 * 60 * 1000) {
+  const sorted = [...rows].sort((a, b) => new Date(a[tsKey]) - new Date(b[tsKey]));
+  const x = [], y = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const t = new Date(sorted[i][tsKey]);
+    if (i > 0) {
+      const prev = new Date(sorted[i - 1][tsKey]);
+      if (t - prev > gapMs) {
+        x.push(new Date((prev.getTime() + t.getTime()) / 2));
+        y.push(null);
+      }
+    }
+    x.push(t);
+    y.push(sorted[i][valueKey]);
+  }
+  return { x, y };
+}
+
+// ----- Now panel: ATM IV per venue + headline gap -----
+async function renderNow() {
+  const container = document.getElementById("vol-now-container");
+  let latest;
+  try { latest = await fetchJson(`${RAW}/data/vol_latest.json`); }
+  catch (e) {
+    container.innerHTML = `<div class="empty">Could not load <code>vol_latest.json</code>: ${escapeHTML(e.message)}<br><span class="status">Run capture-vol once or wait for the next 20-min cron tick.</span></div>`;
+    return;
+  }
+  document.getElementById("now-ts").textContent = latest.ts ? new Date(latest.ts).toUTCString().replace("GMT", "UTC") : "—";
+
+  // Each venue's row gives an array of strike quotes; pick the one closest to spot for ATM IV.
+  const byVenue = new Map();
+  for (const r of (latest.rows ?? [])) byVenue.set(r.venue, r);
+
+  function atmFor(r) {
+    if (!r || !r.quotes?.length || r.underlying_px == null) return null;
+    let best = r.quotes[0], bestDist = Math.abs((best.strike ?? 0) - r.underlying_px);
+    for (const q of r.quotes) {
+      if (q.mid_iv == null || q.strike == null) continue;
+      const d = Math.abs(q.strike - r.underlying_px);
+      if (d < bestDist) { best = q; bestDist = d; }
+    }
+    return best?.mid_iv ?? null;
+  }
+
+  const cards = VOL_VENUES.map(v => {
+    const r = byVenue.get(v);
+    const atm = atmFor(r);
+    const ageMin = r?.data_age_sec != null ? Math.round(r.data_age_sec / 60) : 0;
+    const ageNote = ageMin > 30 ? `<small style="color:var(--warn)">${ageMin}m old</small>` : (ageMin > 0 ? `<small>${ageMin}m old</small>` : "<small>live</small>");
+    const expiry = r?.expiry ?? "—";
+    return `
+      <div class="vol-card">
+        <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
+        <div class="iv">${fmtIv(atm)}</div>
+        <div class="meta-line">expiry ${expiry} · ${ageNote}</div>
+        <div class="vol24">${r?.total_volume_24h_usd != null ? "24h vol " + fmtUsd(r.total_volume_24h_usd) : ""}</div>
+      </div>`;
+  }).join("");
+
+  // Headline gap: average pred-mkt ATM minus CBOE ATM.
+  const predIvs = ["kalshi", "polymarket"]
+    .map(v => atmFor(byVenue.get(v)))
+    .filter(x => x != null);
+  const cboeIv = atmFor(byVenue.get("cboe_uso"));
+  let gapHtml = "";
+  if (predIvs.length && cboeIv != null) {
+    const predAvg = predIvs.reduce((a, b) => a + b, 0) / predIvs.length;
+    const gap = (predAvg - cboeIv) * 100;
+    const sign = gap >= 0 ? "+" : "";
+    const cls = gap >= 0 ? "pos" : "neg";
+    gapHtml = `<div class="gap-headline">Avg pred-mkt vs CBOE: <strong style="color:var(--${cls === 'pos' ? 'pos' : 'neg'})">${sign}${gap.toFixed(1)} vol pts</strong></div>`;
+  }
+
+  container.innerHTML = `
+    <div class="vol-now">
+      <div class="vol-now-header">
+        <h2><span class="num" style="display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:rgba(34,211,238,.12);color:var(--accent);font-size:.72rem;font-weight:700;margin-right:.55rem">1</span>Now · 30-day forward IV</h2>
+        <span class="product">WTI Crude</span>
+      </div>
+      <div class="vol-now-grid">${cards}</div>
+      <div class="vol-now-footer">${gapHtml}<div style="color:var(--text-2);font-size:.75rem">CBOE/USO is per-strike; OVX is the single-number 30-day ATM benchmark.</div></div>
+    </div>`;
+}
+
+// ----- Range loader -----
+let manifest = null;
+async function loadFilesLimited(jobs, concurrency = 6) {
+  const results = new Array(jobs.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= jobs.length) return;
+      try { await jobs[i](); results[i] = true; }
+      catch (e) { console.warn("loadFilesLimited:", i, e.message); results[i] = false; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
+  return results;
+}
+
+async function loadRange(startDate, endDate) {
+  setStatus("fetching manifest…");
+  manifest = await fetchJson(`${RAW}/data/manifest.json`);
+  const dailyInRange = (manifest.options_dates ?? []).filter(d => d >= startDate && d <= endDate);
+  let intradayFiles = [];
+  const today = manifest.intraday_date;
+  if (today && today >= startDate && today <= endDate) {
+    intradayFiles = manifest.options_intraday_files ?? [];
+  }
+  if (dailyInRange.length === 0 && intradayFiles.length === 0) {
+    setStatus("no vol data in range");
+    return 0;
+  }
+  setStatus(`fetching ${dailyInRange.length} daily + ${intradayFiles.length} intraday options files…`);
+  const dailyNames = dailyInRange.map(d => `vol_daily_${d.replace(/-/g, "_")}.parquet`);
+  const intradayNames = intradayFiles.map((_, i) => `vol_intraday_${i}.parquet`);
+  const dailyJobs = dailyInRange.map((d, i) => async () => {
+    const [y, m, day] = d.split("-");
+    await loadParquet(`${RAW}/data/options_daily/${y}/${m}/${day}.parquet`, dailyNames[i]);
+  });
+  const intradayJobs = intradayFiles.map((relPath, i) => async () => {
+    await loadParquet(`${RAW}/data/${relPath}`, intradayNames[i]);
+  });
+  const dOk = await loadFilesLimited(dailyJobs, 4);
+  const iOk = await loadFilesLimited(intradayJobs, 8);
+  const okNames = [
+    ...dailyNames.filter((_, i) => dOk[i]),
+    ...intradayNames.filter((_, i) => iOk[i]),
+  ];
+  if (!okNames.length) { setStatus("all files failed to load"); return 0; }
+  const sqlList = okNames.map(n => `'${n}'`).join(", ");
+  // Two views: `vol_snapshots` is the raw row-per-(snapshot, venue, expiry);
+  // `vol_quotes` is exploded to one row per strike.
+  await conn.query(
+    `CREATE OR REPLACE VIEW vol_snapshots AS SELECT * FROM read_parquet([${sqlList}])`
+  );
+  await conn.query(`
+    CREATE OR REPLACE VIEW vol_quotes AS
+    SELECT s.ts, s.venue, s.product, s.expiry, s.underlying_px,
+           q.strike, q.lo_strike, q.hi_strike, q.mid_iv, q.bid_px, q.ask_px,
+           q.last_px, q.market_id, q.raw_prob, q.volume, q.open_interest,
+           q.volume_24h_usd
+    FROM vol_snapshots s, UNNEST(s.quotes) AS t(q)
+  `);
+  const failed = dOk.filter(x => !x).length + iOk.filter(x => !x).length;
+  setStatus(`loaded ${okNames.length} options files${failed ? ` (${failed} skipped)` : ""}`);
+  return okNames.length;
+}
+
+async function rowsOf(sql) {
+  const res = await conn.query(sql);
+  return res.toArray().map(r => r.toJSON());
+}
+
+// ----- Plotly helpers -----
+const FONT = { family: "Inter, sans-serif", size: 11, color: "#a0a8bd" };
+function darkLayout(extra = {}) {
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: FONT, margin: { t: 36, r: 16, l: 50, b: 38 },
+    hoverlabel: { bgcolor: "#131826", bordercolor: "#2e3650", font: { color: "#e6e8ee", family: "Inter" } },
+    xaxis: { gridcolor: "#1a2030", zerolinecolor: "#2e3650", linecolor: "#232a3b", tickfont: FONT },
+    yaxis: { gridcolor: "#1a2030", zerolinecolor: "#2e3650", linecolor: "#232a3b", tickfont: FONT, zeroline: true },
+    legend: { font: FONT, bgcolor: "rgba(0,0,0,0)", orientation: "h", y: -0.18, x: 0 },
+    title: { font: { family: "Inter", size: 12, color: "#cbd5e1" }, x: 0.01, xanchor: "left" },
+  }, extra);
+}
+const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
+
+// ----- §2 Smile overlay -----
+async function renderSmile() {
+  // Use the latest snapshot per venue from the loaded range.
+  const rows = await rowsOf(`
+    WITH latest_per_venue AS (
+      SELECT venue, MAX(ts) AS max_ts FROM vol_snapshots GROUP BY venue
+    )
+    SELECT q.* FROM vol_quotes q
+    JOIN latest_per_venue lp
+      ON lp.venue = q.venue AND lp.max_ts = q.ts
+    WHERE q.mid_iv IS NOT NULL
+  `);
+
+  const traces = [];
+  for (const venue of VOL_VENUES) {
+    if (venue === "ovx") continue;  // OVX rendered separately as horizontal anchor
+    const filt = rows.filter(r => r.venue === venue);
+    if (!filt.length) continue;
+    filt.sort((a, b) => a.strike - b.strike);
+    // Dot size scaled by log notional, capped to a reasonable range.
+    const sizes = filt.map(r => {
+      const v = r.volume_24h_usd ?? 0;
+      const s = 6 + Math.min(18, Math.log10(1 + v) * 3.5);
+      return s;
+    });
+    traces.push({
+      x: filt.map(r => r.strike),
+      y: filt.map(r => r.mid_iv * 100),
+      name: VENUE_LABEL[venue],
+      mode: "markers",
+      type: "scatter",
+      marker: { color: COLOR[venue], size: sizes, opacity: 0.7, line: { color: COLOR[venue], width: 1 } },
+      hovertemplate:
+        "<b>" + VENUE_LABEL[venue] + "</b><br>" +
+        "Strike: $%{x:.2f}<br>" +
+        "IV: %{y:.1f}%<br>" +
+        "24h vol: %{customdata|$,.0f}<extra></extra>",
+      customdata: filt.map(r => r.volume_24h_usd ?? 0),
+    });
+  }
+  // OVX horizontal reference line
+  const ovxRows = rows.filter(r => r.venue === "ovx");
+  if (ovxRows.length) {
+    const iv = ovxRows[0].mid_iv * 100;
+    const xs = traces.flatMap(t => t.x);
+    if (xs.length) {
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      traces.push({
+        x: [minX, maxX], y: [iv, iv],
+        name: `OVX (${iv.toFixed(1)}%)`,
+        mode: "lines", type: "scatter",
+        line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
+        hoverinfo: "name",
+      });
+    }
+  }
+  Plotly.react("chart-smile", traces, darkLayout({
+    title: { text: "WTI · vol smile by strike (%)" },
+    xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Strike ($)", font: FONT } }),
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Implied vol (% annualized)", font: FONT }, ticksuffix: "%" }),
+  }), PLOTLY_OPTS);
+}
+
+// Helper: pick the ATM IV (strike closest to underlying spot) per snapshot+venue.
+async function _atmRows() {
+  return await rowsOf(`
+    WITH ranked AS (
+      SELECT ts, venue, expiry, underlying_px, strike, mid_iv,
+             ROW_NUMBER() OVER (
+               PARTITION BY ts, venue
+               ORDER BY abs(strike - underlying_px) ASC
+             ) AS rn
+      FROM vol_quotes WHERE mid_iv IS NOT NULL AND underlying_px IS NOT NULL
+    )
+    SELECT ts, venue, expiry, underlying_px, strike, mid_iv FROM ranked WHERE rn = 1
+    ORDER BY ts
+  `);
+}
+
+// ----- §3 ATM-30d time series -----
+async function renderAtmTs() {
+  const rows = await _atmRows();
+  const traces = VOL_VENUES.map(v => {
+    const filt = rows.filter(r => r.venue === v);
+    if (!filt.length) return null;
+    const { x, y } = withGaps(filt.map(r => ({ ts: r.ts, iv: r.mid_iv * 100 })), "ts", "iv", 60 * 60 * 1000);
+    return {
+      x, y,
+      name: VENUE_LABEL[v],
+      mode: v === "ovx" ? "lines" : "lines+markers",
+      type: "scatter",
+      line: { color: COLOR[v], width: 1.6, shape: "spline", smoothing: 0.4, dash: v === "ovx" ? "dash" : "solid" },
+      marker: v === "ovx" ? undefined : { color: COLOR[v], size: 5 },
+      hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}%</b><extra>" + VENUE_LABEL[v] + "</extra>",
+    };
+  }).filter(Boolean);
+  Plotly.react("chart-atm-ts", traces, darkLayout({
+    title: { text: "ATM-30d IV by venue (%)" },
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "IV (% annualized)", font: FONT }, ticksuffix: "%" }),
+  }), PLOTLY_OPTS);
+}
+
+// ----- §4 Cross-venue dispersion -----
+async function renderDispersion() {
+  const rows = await _atmRows();
+  // Pivot in JS: for each ts, compute max(IV) - min(IV) across venues.
+  const byTs = new Map();
+  for (const r of rows) {
+    if (!byTs.has(r.ts)) byTs.set(r.ts, []);
+    byTs.get(r.ts).push(r.mid_iv);
+  }
+  const dispRows = [];
+  for (const [ts, ivs] of byTs.entries()) {
+    if (ivs.length < 2) continue;
+    const max = Math.max(...ivs), min = Math.min(...ivs);
+    dispRows.push({ ts, gap: (max - min) * 100 });
+  }
+  dispRows.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  const { x, y } = withGaps(dispRows, "ts", "gap", 60 * 60 * 1000);
+  Plotly.react("chart-dispersion", [{
+    x, y,
+    name: "Dispersion",
+    mode: "lines", type: "scatter",
+    line: { color: "#22d3ee", width: 1.8, shape: "spline", smoothing: 0.4 },
+    fill: "tozeroy", fillcolor: "rgba(34, 211, 238, .08)",
+    hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}</b> vol pts<extra></extra>",
+  }], darkLayout({
+    title: { text: "Cross-venue ATM-IV dispersion (vol pts)" },
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "max(IV) − min(IV)", font: FONT }, ticksuffix: " vp" }),
+  }), PLOTLY_OPTS);
+}
+
+// ----- §5 Top dislocation events -----
+async function renderTopEvents() {
+  const venueFilter = document.getElementById("events-venue")?.value || "";
+  const minVolStr = document.getElementById("events-minvol")?.value || "0";
+  const minVol = Number(minVolStr) || 0;
+  const venueClause = venueFilter ? `AND p.venue = '${venueFilter}'` : "AND p.venue IN ('kalshi','polymarket')";
+
+  // For each prediction-market quote, find the nearest CBOE strike at the same ts, compute IV gap.
+  // To keep this simple in DuckDB, do an ASOF-style nearest-strike join via correlated subquery.
+  const rows = await rowsOf(`
+    WITH cboe AS (
+      SELECT ts, strike, mid_iv FROM vol_quotes WHERE venue = 'cboe_uso' AND mid_iv IS NOT NULL
+    ),
+    pred AS (
+      SELECT ts, venue, expiry, strike, mid_iv, volume_24h_usd, market_id, underlying_px
+      FROM vol_quotes p
+      WHERE mid_iv IS NOT NULL ${venueClause.replace(/^AND /, "AND ")}
+        AND (volume_24h_usd IS NULL OR volume_24h_usd >= ${minVol})
+    )
+    SELECT p.ts, p.venue, p.expiry, p.strike, p.mid_iv AS pred_iv, p.volume_24h_usd, p.underlying_px,
+           (SELECT mid_iv FROM cboe c
+            WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1) AS cboe_iv,
+           (SELECT strike  FROM cboe c
+            WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1) AS cboe_strike
+    FROM pred p
+    WHERE EXISTS (SELECT 1 FROM cboe c WHERE c.ts = p.ts)
+    ORDER BY abs(pred_iv - (SELECT mid_iv FROM cboe c WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1)) DESC
+    LIMIT 10
+  `);
+
+  let html = `<thead><tr>
+    <th style="text-align:right">#</th>
+    <th>Timestamp (UTC)</th><th>Venue</th><th>Expiry</th>
+    <th style="text-align:right">Strike</th>
+    <th style="text-align:right">Pred IV</th>
+    <th style="text-align:right">CBOE IV</th>
+    <th style="text-align:right">Gap (vp)</th>
+    <th style="text-align:right">24h vol</th>
+  </tr></thead><tbody>`;
+  if (!rows.length) {
+    html += `<tr><td colspan="9" class="empty">No dislocation events match your filters yet.</td></tr>`;
+  }
+  rows.forEach((r, i) => {
+    const gap = (r.pred_iv - r.cboe_iv) * 100;
+    const cls = gap > 0 ? "pos" : "neg";
+    const sign = gap >= 0 ? "+" : "";
+    html += `<tr>
+      <td class="mono" style="text-align:right;color:var(--muted)">${i + 1}</td>
+      <td class="mono">${new Date(r.ts).toISOString().slice(0,16).replace("T", " ")}</td>
+      <td><span class="venue"><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${COLOR[r.venue]};margin-right:.4rem"></span>${VENUE_LABEL[r.venue]}</span></td>
+      <td>${r.expiry}</td>
+      <td class="mono" style="text-align:right">$${Number(r.strike).toFixed(1)}</td>
+      <td class="mono" style="text-align:right">${(r.pred_iv*100).toFixed(1)}%</td>
+      <td class="mono" style="text-align:right">${(r.cboe_iv*100).toFixed(1)}%</td>
+      <td class="mono gap ${cls}" style="text-align:right">${sign}${gap.toFixed(1)}</td>
+      <td class="mono" style="text-align:right">${r.volume_24h_usd != null ? "$" + Number(r.volume_24h_usd).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—"}</td>
+    </tr>`;
+  });
+  html += "</tbody>";
+  document.getElementById("events-table").innerHTML = html;
+}
+
+// ----- §6 Vol-market depth -----
+async function renderVolDepth() {
+  const activeBtn = document.querySelector("#volume-filters .preset.active");
+  const mode = activeBtn?.dataset.volMode ?? "live";
+  const sql = mode === "daily"
+    ? `SELECT date_trunc('day', ts::TIMESTAMP) AS ts, venue, AVG(total_volume_24h_usd) AS v
+       FROM vol_snapshots WHERE total_volume_24h_usd IS NOT NULL
+       GROUP BY 1, 2 ORDER BY 1`
+    : `SELECT ts, venue, total_volume_24h_usd AS v FROM vol_snapshots
+       WHERE total_volume_24h_usd IS NOT NULL ORDER BY ts`;
+  const rows = await rowsOf(sql);
+  const venues = Array.from(new Set(rows.map(r => r.venue))).filter(v => v !== "ovx");
+  const traces = venues.map(v => {
+    const filt = rows.filter(r => r.venue === v);
+    const gapMs = mode === "daily" ? 2 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+    const { x, y } = withGaps(filt, "ts", "v", gapMs);
+    if (mode === "daily") {
+      return {
+        x, y, name: VENUE_LABEL[v] ?? v, type: "scatter",
+        mode: "lines+markers",
+        line: { color: COLOR[v], width: 1.8, shape: "linear" },
+        marker: { color: COLOR[v], size: 7 },
+        hovertemplate: "%{x|%a %Y-%m-%d}<br><b>$%{y:,.0f}</b> avg<extra>" + (VENUE_LABEL[v] ?? v) + "</extra>",
+      };
+    }
+    return {
+      x, y, name: VENUE_LABEL[v] ?? v, type: "scatter",
+      mode: "lines",
+      line: { color: COLOR[v], width: 1.6, shape: "spline", smoothing: 0.4 },
+      fill: "tozeroy", fillcolor: COLOR[v] + "1a",
+      hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>$%{y:,.0f}</b><extra>" + (VENUE_LABEL[v] ?? v) + "</extra>",
+    };
+  });
+  Plotly.react("chart-vol-depth", traces, darkLayout({
+    title: { text: `Vol-market 24h notional · ${mode === "daily" ? "daily avg" : "live"}` },
+    yaxis: Object.assign(darkLayout().yaxis, { title: { text: "USD", font: FONT }, tickformat: "~s" }),
+  }), PLOTLY_OPTS);
+}
+
+async function renderAll() {
+  try {
+    await renderSmile();
+    await renderAtmTs();
+    await renderDispersion();
+    await renderTopEvents();
+    await renderVolDepth();
+    setStatus("ready");
+  } catch (e) {
+    setStatus("query error: " + e.message);
+    console.error(e);
+  }
+}
+
+// ----- range presets + listeners -----
+function setRangeDays(days) {
+  const today = new Date();
+  const start = new Date(today); start.setUTCDate(today.getUTCDate() - days);
+  document.getElementById("start").value = start.toISOString().slice(0, 10);
+  document.getElementById("end").value = today.toISOString().slice(0, 10);
+  document.querySelectorAll(".toolbar .preset").forEach(b =>
+    b.classList.toggle("active", Number(b.dataset.days) === days));
+}
+document.querySelectorAll(".toolbar .preset").forEach(b => {
+  b.addEventListener("click", async () => {
+    const d = Number(b.dataset.days);
+    setRangeDays(d);
+    const n = await loadRange(document.getElementById("start").value, document.getElementById("end").value);
+    if (n) await renderAll();
+  });
+});
+for (const id of ["events-venue", "events-minvol"]) {
+  document.getElementById(id).addEventListener("change", () => { renderTopEvents().catch(e => console.error(e)); });
+}
+document.querySelectorAll("#volume-filters .preset").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#volume-filters .preset").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    renderVolDepth().catch(e => console.error(e));
+  });
+});
+document.getElementById("reload").addEventListener("click", async () => {
+  document.querySelectorAll(".toolbar .preset").forEach(b => b.classList.remove("active"));
+  const s = document.getElementById("start").value;
+  const e = document.getElementById("end").value;
+  if (!s || !e) return;
+  const n = await loadRange(s, e);
+  if (n) await renderAll();
+});
+
+// ----- Initial load -----
+await renderNow();
+setRangeDays(7);
+try {
+  const n = await loadRange(
+    document.getElementById("start").value,
+    document.getElementById("end").value,
+  );
+  if (n) await renderAll();
+} catch (e) {
+  setStatus("load error: " + e.message);
+  console.error(e);
+}
+
+// Refresh the Now panel every 60s.
+setInterval(() => { renderNow().catch(e => console.error(e)); }, 60000);
+</script>
+</body>
+</html>

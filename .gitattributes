@@ -3,4 +3,5 @@
 # (the version in the runner that's about to push) — it's by definition the
 # newest snapshot. Requires `git config merge.ours.driver true` in the runner.
 data/latest.json merge=ours
+data/vol_latest.json merge=ours
 data/manifest.json merge=ours

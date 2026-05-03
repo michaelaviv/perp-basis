@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 
 from perp_basis.config import DATA_DIR
 from perp_basis.manifest import write_manifest
-from perp_basis.storage import write_daily
+from perp_basis.storage import write_daily, write_daily_vol
 
 log = logging.getLogger(__name__)
 
@@ -28,27 +28,38 @@ def _resolve_date(spec: str) -> date:
     return date.fromisoformat(spec)
 
 
-def compact_day(target: date, root: Path = DATA_DIR, *, delete_source: bool = True) -> Path | None:
-    src_dir = root / "snapshots" / f"{target:%Y}" / f"{target:%m}" / f"{target:%d}"
+def _compact_tree(target: date, root: Path, src_subdir: str, write_fn,
+                  *, delete_source: bool = True) -> Path | None:
+    """Generic per-day compaction: concat snapshots/options_snapshots → daily file."""
+    src_dir = root / src_subdir / f"{target:%Y}" / f"{target:%m}" / f"{target:%d}"
     if not src_dir.exists():
-        log.warning("compact: no snapshots for %s at %s", target, src_dir)
+        log.info("compact[%s]: no snapshots for %s at %s", src_subdir, target, src_dir)
         return None
     files = sorted(src_dir.glob("*.parquet"))
     if not files:
-        log.warning("compact: no parquet files in %s", src_dir)
+        log.info("compact[%s]: no parquet files in %s", src_subdir, src_dir)
         return None
 
     tables = [pq.read_table(f) for f in files]
     table = pa.concat_tables(tables, promote_options="default")
     table = table.sort_by([("ts", "ascending"), ("venue", "ascending"), ("product", "ascending")])
 
-    out = write_daily(table, target.isoformat(), root=root)
-    log.info("compact: %s → %s (%d rows from %d files)", target, out, table.num_rows, len(files))
+    out = write_fn(table, target.isoformat(), root=root)
+    log.info("compact[%s]: %s → %s (%d rows from %d files)",
+             src_subdir, target, out, table.num_rows, len(files))
 
     if delete_source:
         shutil.rmtree(src_dir)
-        log.info("compact: removed source dir %s", src_dir)
+        log.info("compact[%s]: removed source dir %s", src_subdir, src_dir)
     return out
+
+
+def compact_day(target: date, root: Path = DATA_DIR, *, delete_source: bool = True) -> Path | None:
+    return _compact_tree(target, root, "snapshots", write_daily, delete_source=delete_source)
+
+
+def compact_day_vol(target: date, root: Path = DATA_DIR, *, delete_source: bool = True) -> Path | None:
+    return _compact_tree(target, root, "options_snapshots", write_daily_vol, delete_source=delete_source)
 
 
 def main() -> int:
@@ -60,6 +71,7 @@ def main() -> int:
 
     target = _resolve_date(args.date)
     compact_day(target, delete_source=not args.keep_snapshots)
+    compact_day_vol(target, delete_source=not args.keep_snapshots)
     write_manifest()
     return 0
 
