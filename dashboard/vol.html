@@ -277,14 +277,14 @@
   </section>
 
   <section class="panel">
-    <h2><span class="num">3</span> ATM-30d IV · time series</h2>
-    <p class="desc">At-the-money IV (~spot strike) for each venue over time. Tracks whether the cross-venue gap is widening, narrowing, or stable.</p>
+    <h2><span class="num">3</span> ATM IV · time series <span style="color:var(--warn);font-size:.72rem;font-weight:500;letter-spacing:.04em">⚠ MIXED TENORS</span></h2>
+    <p class="desc">At-the-money IV (~spot strike) per venue. <strong style="color:var(--warn)">Each venue uses its own settle date</strong> — Kalshi ~4-7d (KXWTIW weekly), Polymarket ~30-60d (monthly settle), CBOE/USO ~30d (closest-to-target), OVX 30d (constant index). The lines are NOT directly comparable in level — only in shape and time evolution. Hover shows each point's DTE.</p>
     <details class="howto"><summary>How to read this</summary>
       <div class="body">
-        <p><strong>What ATM IV means.</strong> The implied vol of the strike closest to current spot, annualized. It's the cleanest single number for "what is the market pricing for the next 30 days of WTI vol?". The vol curve trades — directional vol bets are made via ATM straddles.</p>
-        <p><strong>The four lines.</strong> CBOE/USO (green, solid) is the option-market reference. OVX (grey, dashed) is the official ATM benchmark — should track CBOE/USO closely; large divergence means USO chain is mispriced. Kalshi (amber) and Polymarket (purple) are the prediction-market-derived ATMs.</p>
-        <p><strong>Spread = signal.</strong> A persistent gap between Kalshi/Polymarket and CBOE/USO is your edge. Watch the spread (not the absolute level) — vol regimes shift but the cross-venue gap is what's actually tradeable.</p>
-        <p><strong>Heads-up about ATM.</strong> "Closest strike to spot" can jump as the market moves (a $1 move in CL flips which strike is ATM). Expect some sawtooth in the time series; smooth visually rather than reading every tick.</p>
+        <p><strong>The mixed-tenor problem.</strong> Pred markets have specific resolution dates and we can't pick "30-day" Kalshi because Kalshi only lists weekly WTI markets. So this chart plots different tenors on the same axis — a 4-day Kalshi IV is naturally different from a 30-day CBOE IV (vol term structure: typically backwardated in a calm market, contangoed when stressed).</p>
+        <p><strong>What's still meaningful here.</strong> (a) <em>Time evolution per venue</em> — is Kalshi's vol drifting up or down? (b) <em>Co-movement</em> — when CBOE moves, do pred markets follow? (c) <em>Sustained level differences vs term structure</em> — a 20-vol-pt Kalshi-vs-CBOE gap is way more than what term structure alone explains, so it's signal.</p>
+        <p><strong>What's NOT meaningful.</strong> Reading absolute spread between two lines and calling it edge. For tradeable spreads with proper tenor matching, see §4 (where the CBOE leg is repicked per snapshot to match the pred's expiry).</p>
+        <p><strong>Heads-up about ATM.</strong> "Closest strike to spot" can jump as spot moves. For Polymarket the closest market is often a $5-10-wide range (so ATM is approximate). Tooltip flags both DTE and strike distance.</p>
       </div>
     </details>
     <div id="chart-atm-ts" class="chart"></div>
@@ -657,6 +657,18 @@ function darkLayout(extra = {}) {
 const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
 
 // ----- §2 Smile overlay -----
+//
+// Per-venue freshness gate so we don't render a 65h-old CBOE/USO smile next
+// to live pred-market dots and call them comparable. Thresholds match the
+// collector-side skip rules: pred markets (~live), CBOE intraday (~4h),
+// OVX daily index (~30h).
+const SMILE_STALE_THRESHOLD_MS = {
+  cboe_uso: 4 * 3600 * 1000,
+  ovx: 30 * 3600 * 1000,
+  kalshi: 70 * 60 * 1000,
+  polymarket: 70 * 60 * 1000,
+};
+
 async function renderSmile() {
   // Use the latest snapshot per venue from the loaded range.
   const rows = await rowsOf(`
@@ -669,11 +681,28 @@ async function renderSmile() {
     WHERE q.mid_iv IS NOT NULL
   `);
 
+  // Reference "now" = the freshest snapshot anywhere in the loaded range.
+  // (We can't use Date.now() because the user might be looking at a back-loaded
+  // window; the freshest snapshot is the right anchor.)
+  const allTs = rows.map(r => new Date(r.ts).getTime());
+  const maxTsMs = allTs.length ? Math.max(...allTs) : Date.now();
+
+  // Track which venues we drop so the chart can call it out.
+  const droppedStale = [];
+
   const traces = [];
   for (const venue of VOL_VENUES) {
     if (venue === "ovx") continue;  // OVX rendered separately as horizontal anchor
     const filt = rows.filter(r => r.venue === venue);
     if (!filt.length) continue;
+    // Freshness gate: drop venues whose latest snapshot is older than threshold.
+    const venueTsMs = new Date(filt[0].ts).getTime();
+    const ageMs = maxTsMs - venueTsMs;
+    const thresholdMs = SMILE_STALE_THRESHOLD_MS[venue] ?? 70 * 60 * 1000;
+    if (ageMs > thresholdMs) {
+      droppedStale.push(`${VENUE_LABEL[venue]} (${Math.round(ageMs / 3600000)}h old)`);
+      continue;
+    }
     filt.sort((a, b) => a.strike - b.strike);
 
     // Split each venue's quotes into single-sided (above/below) vs range
@@ -715,25 +744,39 @@ async function renderSmile() {
       });
     }
   }
-  // OVX horizontal reference line
+  // OVX horizontal reference line — same freshness gate as the per-strike venues.
   const ovxRows = rows.filter(r => r.venue === "ovx");
   if (ovxRows.length) {
-    const iv = ovxRows[0].mid_iv * 100;
-    const xs = traces.flatMap(t => t.x);
-    if (xs.length) {
-      const minX = Math.min(...xs);
-      const maxX = Math.max(...xs);
-      traces.push({
-        x: [minX, maxX], y: [iv, iv],
-        name: `OVX (${iv.toFixed(1)}%)`,
-        mode: "lines", type: "scatter",
-        line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
-        hoverinfo: "name",
-      });
+    const ovxAgeMs = maxTsMs - new Date(ovxRows[0].ts).getTime();
+    const ovxThreshold = SMILE_STALE_THRESHOLD_MS.ovx;
+    if (ovxAgeMs <= ovxThreshold) {
+      const iv = ovxRows[0].mid_iv * 100;
+      const xs = traces.flatMap(t => t.x);
+      if (xs.length) {
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        traces.push({
+          x: [minX, maxX], y: [iv, iv],
+          name: `OVX (${iv.toFixed(1)}%)`,
+          mode: "lines", type: "scatter",
+          line: { color: COLOR.ovx, width: 1.6, dash: "dash" },
+          hoverinfo: "name",
+        });
+      }
+    } else {
+      droppedStale.push(`OVX (${Math.round(ovxAgeMs / 3600000)}h old)`);
     }
   }
+
+  // Title surfaces dropped venues so the user knows the smile is missing legs
+  // (rather than wondering why CBOE isn't showing on a Sunday).
+  const titleBase = "WTI · vol smile by strike (%)";
+  const titleSuffix = droppedStale.length
+    ? `<br><span style='color:#f59e0b;font-size:.78rem'>⚠ excluded as stale: ${droppedStale.join(", ")}</span>`
+    : "";
   Plotly.react("chart-smile", traces, darkLayout({
-    title: { text: "WTI · vol smile by strike (%)" },
+    title: { text: titleBase + titleSuffix },
+    margin: { t: droppedStale.length ? 56 : 36, r: 16, l: 50, b: 38 },
     xaxis: Object.assign(darkLayout().xaxis, { title: { text: "Strike ($)", font: FONT } }),
     yaxis: Object.assign(darkLayout().yaxis, { title: { text: "Implied vol (% annualized)", font: FONT }, ticksuffix: "%" }),
   }), PLOTLY_OPTS);
@@ -755,29 +798,67 @@ async function _atmRows() {
   `);
 }
 
-// ----- §3 ATM-30d time series -----
+// ----- §3 ATM IV time series (mixed tenors per venue) -----
 async function renderAtmTs() {
   const rows = (await _atmRows()).filter(r => !STALE_OUTSIDE_CBOE_HOURS.has(r.venue) || isCboeOpen(r.ts));
   // Vol cron is 20-min cadence (vs basis 5-min) so series will always be sparse.
   // Use lines+markers everywhere so single/few points are still visible, and
   // size the gap threshold to be lenient (3 ticks of the 20-min cron).
   const VOL_GAP_MS = 70 * 60 * 1000;
+
+  // Median DTE per venue, used to label the legend with the typical tenor
+  // (Kalshi ~7d, Polymarket ~30-60d, CBOE ~30d, OVX 30d).
+  function medianDte(filt) {
+    const dtes = filt.map(r => {
+      const e = new Date(r.expiry).getTime();
+      const t = new Date(r.ts).getTime();
+      return (e - t) / 86400000;
+    }).filter(Number.isFinite).sort((a, b) => a - b);
+    if (!dtes.length) return null;
+    return dtes[Math.floor(dtes.length / 2)];
+  }
+
   const traces = VOL_VENUES.map(v => {
     const filt = rows.filter(r => r.venue === v);
     if (!filt.length) return null;
-    const { x, y } = withGaps(filt.map(r => ({ ts: r.ts, iv: r.mid_iv * 100 })), "ts", "iv", VOL_GAP_MS);
+    const med = medianDte(filt);
+    const tenorTag = med != null ? ` (~${Math.round(med)}d)` : "";
+    // Carry expiry/strike/dte through the trace so the hover can surface them.
+    const enriched = filt.map(r => ({
+      ts: r.ts, iv: r.mid_iv * 100,
+      expiry: r.expiry, strike: r.strike,
+      dte: (new Date(r.expiry).getTime() - new Date(r.ts).getTime()) / 86400000,
+    })).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    const { x, y } = withGaps(enriched, "ts", "iv", VOL_GAP_MS);
+    // Plotly with-gap helper inserts null y at gap mids; align customdata
+    // length by re-walking the same logic just for customdata.
+    const customdata = [];
+    for (let i = 0; i < enriched.length; i++) {
+      const e = enriched[i];
+      if (i > 0) {
+        const prev = enriched[i - 1];
+        if (new Date(e.ts) - new Date(prev.ts) > VOL_GAP_MS) {
+          customdata.push([null, null, null]);
+        }
+      }
+      customdata.push([e.expiry, e.strike, e.dte]);
+    }
     return {
-      x, y,
-      name: VENUE_LABEL[v],
+      x, y, customdata,
+      name: VENUE_LABEL[v] + tenorTag,
       mode: "lines+markers",
       type: "scatter",
       line: { color: COLOR[v], width: 1.6, shape: "spline", smoothing: 0.4, dash: v === "ovx" ? "dash" : "solid" },
       marker: { color: COLOR[v], size: 6 },
-      hovertemplate: "%{x|%Y-%m-%d %H:%M}<br><b>%{y:.1f}%</b><extra>" + VENUE_LABEL[v] + "</extra>",
+      hovertemplate:
+        "%{x|%Y-%m-%d %H:%M}<br>" +
+        "<b>" + VENUE_LABEL[v] + " %{y:.1f}%</b><br>" +
+        "expiry %{customdata[0]} (%{customdata[2]:.0f}d)<br>" +
+        "K $%{customdata[1]:.1f}<extra></extra>",
     };
   }).filter(Boolean);
   Plotly.react("chart-atm-ts", traces, darkLayout({
-    title: { text: "ATM-30d IV by venue (%)" },
+    title: { text: "ATM IV per venue · MIXED TENORS (~4d Kalshi, ~30d CBOE/OVX, ~30-60d Polymarket)" },
     yaxis: Object.assign(darkLayout().yaxis, { title: { text: "IV (% annualized)", font: FONT }, ticksuffix: "%" }),
   }), PLOTLY_OPTS);
 }
