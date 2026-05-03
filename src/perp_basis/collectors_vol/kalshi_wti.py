@@ -69,6 +69,16 @@ async def _fetch_markets(client: httpx.AsyncClient, series: str) -> list[dict]:
     return out
 
 
+def _to_float(v) -> float | None:
+    """Kalshi's *_fp / *_dollars fields are stringified fixed-point numbers."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def _mid_prob(market: dict) -> float | None:
     """Convert Kalshi cents bid/ask into a probability midpoint in [0, 1]."""
     bid, ask = market.get("yes_bid"), market.get("yes_ask")
@@ -158,16 +168,20 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     if iv < 0.05 or iv > 2.5:
         return None
 
+    # Bid/ask come from the /markets summary as cents (or are backfilled from
+    # /orderbook in cents by `_yes_bid_ask_from_orderbook` upstream).
     bid_px = market.get("yes_bid")
     ask_px = market.get("yes_ask")
-    last_px = market.get("last_price")
-    vol = market.get("volume")
-    vol24 = market.get("volume_24h")
-    # Kalshi prices are 0-100 cents per contract; notional in USD = contracts * (price/100).
-    # Use mid-price for the conversion when computing 24h notional.
-    notional_usd = None
-    if vol24 is not None and prob is not None:
-        notional_usd = float(vol24) * prob
+    # As of the 2026 Kalshi API rev, summary fields use *_fp suffixes (string
+    # fixed-point) for quantities and *_dollars for prices. The pre-rev names
+    # (last_price, volume, volume_24h, open_interest) are gone, so reading the
+    # old keys silently returned None and we lost all volume + last-trade data.
+    last_px = _to_float(market.get("last_price_dollars"))  # already in dollars
+    vol = _to_float(market.get("volume_fp"))               # contracts
+    vol24 = _to_float(market.get("volume_24h_fp"))         # contracts
+    oi = _to_float(market.get("open_interest_fp"))         # contracts
+    # Notional USD ≈ contracts * mid-prob (each contract pays $1 on YES).
+    notional_usd = vol24 * prob if vol24 is not None and prob is not None else None
 
     return StrikeQuote(
         strike=strike,
@@ -176,11 +190,11 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
         mid_iv=iv,
         bid_px=float(bid_px) / 100.0 if bid_px is not None else None,
         ask_px=float(ask_px) / 100.0 if ask_px is not None else None,
-        last_px=float(last_px) / 100.0 if last_px is not None else None,
+        last_px=last_px,
         market_id=market.get("ticker"),
         raw_prob=prob,
-        volume=float(vol) if vol is not None else None,
-        open_interest=float(market.get("open_interest")) if market.get("open_interest") is not None else None,
+        volume=vol,
+        open_interest=oi,
         volume_24h_usd=notional_usd,
     )
 
