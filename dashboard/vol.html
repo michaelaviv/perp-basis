@@ -241,6 +241,17 @@
     <div class="empty">Loading latest vol snapshot…</div>
   </div>
 
+  <details class="howto" style="margin-bottom:1.25rem"><summary>About this page · what each venue is</summary>
+    <div class="body">
+      <p><strong>The thesis.</strong> Implied volatility derived from prediction markets should converge to (but in practice often diverges from) implied vol on the underlying option chain. When prediction-market IV is meaningfully richer than CBOE option IV — especially in the wings — that's a tradeable dislocation: sell the rich vol on the prediction market, buy the cheaper vol on the option chain.</p>
+      <p><strong>CBOE/USO</strong> — the CBOE-listed option chain on USO (the largest oil ETF, tracks WTI front-month). Used as the TradFi reference smile because CL=F itself has no Yahoo-accessible option chain. Strikes are converted to crude-price scale via <code>K_cl = K_uso × (CL=F_spot / USO_spot)</code> so they line up with prediction-market strikes on the same x-axis. USO has roll/tracking-error baked in, so its IV differs slightly from "pure" CL IV — close enough for v1.</p>
+      <p><strong>OVX</strong> — CBOE Crude Oil Volatility Index, a single number representing 30-day forward ATM IV on USO options. The oil-market equivalent of VIX. Free via Yahoo (<code>^OVX</code>); used as the dashed grey reference line in the smile.</p>
+      <p><strong>Kalshi</strong> — KXWTIW weekly settle-price binary markets ("Will WTI settle &gt; $X on Friday?"). Each market gives one (strike, prob) point; we invert to IV via the lognormal CDF. Multi-strike → real smile shape.</p>
+      <p><strong>Polymarket</strong> — "Will Crude Oil settle at $X-$Y in [Month]?" range markets. Each gives one (range, prob) point; inverted via <code>P(lo &lt; S_T &lt; hi)</code>. We exclude "hit by end of [Month]" markets (path-dependent max-of-path; needs different math).</p>
+      <p><strong>Vol cron is 20-min</strong> (vs basis cron at 5-min). Heavier per-tick (4 collectors, ~20-40 API calls). Sections that depend on history (§3, §4, §6) need a few hours of data to look meaningful.</p>
+    </div>
+  </details>
+
   <div class="toolbar">
     <label>From <input type="date" id="start"></label>
     <label>To <input type="date" id="end"></label>
@@ -268,18 +279,41 @@
   <section class="panel">
     <h2><span class="num">3</span> ATM-30d IV · time series</h2>
     <p class="desc">At-the-money IV (~spot strike) for each venue over time. Tracks whether the cross-venue gap is widening, narrowing, or stable.</p>
+    <details class="howto"><summary>How to read this</summary>
+      <div class="body">
+        <p><strong>What ATM IV means.</strong> The implied vol of the strike closest to current spot, annualized. It's the cleanest single number for "what is the market pricing for the next 30 days of WTI vol?". The vol curve trades — directional vol bets are made via ATM straddles.</p>
+        <p><strong>The four lines.</strong> CBOE/USO (green, solid) is the option-market reference. OVX (grey, dashed) is the official ATM benchmark — should track CBOE/USO closely; large divergence means USO chain is mispriced. Kalshi (amber) and Polymarket (purple) are the prediction-market-derived ATMs.</p>
+        <p><strong>Spread = signal.</strong> A persistent gap between Kalshi/Polymarket and CBOE/USO is your edge. Watch the spread (not the absolute level) — vol regimes shift but the cross-venue gap is what's actually tradeable.</p>
+        <p><strong>Heads-up about ATM.</strong> "Closest strike to spot" can jump as the market moves (a $1 move in CL flips which strike is ATM). Expect some sawtooth in the time series; smooth visually rather than reading every tick.</p>
+      </div>
+    </details>
     <div id="chart-atm-ts" class="chart"></div>
   </section>
 
   <section class="panel">
     <h2><span class="num">4</span> Cross-venue dispersion</h2>
     <p class="desc">max(IV) − min(IV) across venues at each timestamp, in vol points. Spikes = wide cross-venue disagreement = something to look at.</p>
+    <details class="howto"><summary>How to read this</summary>
+      <div class="body">
+        <p><strong>One number for "how much do they disagree?".</strong> At each timestamp we take ATM IV across all four venues and compute the max-min spread. A flat low line means everyone is pricing vol the same way; a spike means at least one venue is way off the rest.</p>
+        <p><strong>Interpreting spikes.</strong> A spike doesn't tell you WHICH venue is the outlier — for that you need §3 above. But a spike on a day when nothing dramatic happened in spot is a structural sign: a prediction market hasn't repriced yet, or an option chain has stale quotes.</p>
+        <p><strong>The interesting question.</strong> When dispersion widens, does it mean-revert in hours, days, or never? After a few days of data, the time-to-revert tells you how durable the cross-venue carry is.</p>
+      </div>
+    </details>
     <div id="chart-dispersion" class="chart"></div>
   </section>
 
   <section class="panel">
     <h2><span class="num">5</span> Top IV-dislocation events</h2>
     <p class="desc">Largest pred-mkt-vs-CBOE gaps in the selected range. "vs CBOE" = pred-mkt IV − nearest CBOE strike IV (positive = pred-mkt richer).</p>
+    <details class="howto"><summary>How to read this · what makes a real opportunity</summary>
+      <div class="body">
+        <p><strong>The setup.</strong> For each prediction-market quote we find the nearest CBOE strike at the same timestamp and compute <code>gap = pred_iv − cboe_iv</code>. Positive = prediction market is pricing higher vol than the option chain. Sorted descending by absolute gap.</p>
+        <p><strong>Why "nearest CBOE strike" instead of an interpolated curve.</strong> Simpler, more conservative. If the nearest CBOE strike is $5 away in a 1-vol-pt-per-$ skew regime, you're already absorbing ~5 vol pts of strike-mismatch noise. Take the gaps with a grain of salt at wing strikes; treat ATM gaps as the most signal-y.</p>
+        <p><strong>Filters that matter.</strong> The "Min 24h vol" filter is the one to actually use — a 30 vol-pt gap on a $50/day market isn't real (you can't enter at the printed mid). $1k is a soft floor for tradeable; $10k means there's actually a counterparty.</p>
+        <p><strong>What to do with a real one.</strong> Sell the rich vol on the prediction market (sell the YES at price &gt; fair, or buy the NO at price &lt; fair); buy the cheaper vol on the CBOE option (long straddle near the same strike). Hedge frequency is the practical limit — if the prediction market resolves in 7 days and CBOE expiry is 30 days, you have a tenor mismatch that needs management.</p>
+      </div>
+    </details>
     <div class="section-filters">
       <label>Venue
         <select id="events-venue">
@@ -305,6 +339,14 @@
   <section class="panel">
     <h2><span class="num">6</span> Vol-market depth · 24h notional volume per venue</h2>
     <p class="desc">Total 24h notional traded per venue. Tells you whether the prediction-market smile is actually tradeable — a 10-vol-point dislocation on a $100/day market isn't a real opportunity.</p>
+    <details class="howto"><summary>How to read this</summary>
+      <div class="body">
+        <p><strong>Why this section exists.</strong> A "real" trade needs a counterparty. Sections 2-5 don't gate on liquidity, so a beautiful 20-vol-pt gap on a Polymarket strike with $5 of 24h volume looks tempting but isn't tradeable at any meaningful size. Use this as the sanity check before acting on §5.</p>
+        <p><strong>What the numbers mean.</strong> Per-venue total 24h notional in USD. CBOE/USO is summed across all strikes (typically $1M+/day for the front-month chain). Kalshi and Polymarket are summed across their per-strike contracts (Kalshi reports notional in cents-per-contract converted to USD; Polymarket reports USDC volume). OVX is excluded — it's an index, not a market.</p>
+        <p><strong>Live vs Daily avg.</strong> Live = per-snapshot 24h-rolling. Daily avg = mean per UTC day; better for spotting weekday/weekend patterns once you have a few weeks of data. Prediction-market volume is heavily weekday-loaded.</p>
+        <p><strong>Rule of thumb.</strong> Need at least <strong>~$10k/day</strong> on a venue before you'd consider it for an actual trade. Below that, the spread eats the carry.</p>
+      </div>
+    </details>
     <div class="section-filters" id="volume-filters">
       <span style="color: var(--text-2); font-size: .78rem;">Mode:</span>
       <button class="preset active" data-vol-mode="live">Live (per-snapshot)</button>
