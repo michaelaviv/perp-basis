@@ -1,9 +1,15 @@
 """Kalshi WTI prediction-market collector.
 
-Pulls all open markets in the user-chosen WTI series (default: KXWTIW, weekly
-settle-price markets), groups by expiry, picks the expiry closest to ~30 days
-out, and inverts each market's mid-probability into an implied volatility via
-the lognormal CDF helpers in `iv_math`.
+Pulls all open markets across the configured WTI series (KXWTI daily +
+KXWTIW weekly), groups by close_time, and picks the expiry with the highest
+24h notional inside a tradeability window. Inverts each chosen market's
+mid-probability into an implied volatility via the lognormal CDF helpers in
+`iv_math`.
+
+Why max-volume across multiple series: KXWTIW alone runs ~$3k 24h notional;
+KXWTI dailies run an order of magnitude higher when active. Picking the
+fattest expiry per snapshot keeps the IV signal tradeable instead of
+chasing a fixed 30d tenor that often has near-zero size.
 
 Series strike types we handle:
 - "greater" : binary "WTI > floor_strike at close" → iv_from_above_prob
@@ -30,8 +36,17 @@ log = logging.getLogger(__name__)
 
 VENUE = "kalshi"
 PRODUCT = "wti"
-SERIES_TICKER = "KXWTIW"  # weekly: closest tenor to 30d we can get from Kalshi
-TARGET_TENOR_DAYS = 30
+# Pull both daily (KXWTI) and weekly (KXWTIW) series; pick the fattest
+# expiry per snapshot. KXWTI is typically ~10× more liquid than KXWTIW
+# but only goes a few days out, so we need both for full tenor coverage.
+SERIES_TICKERS = ("KXWTI", "KXWTIW")
+# Tradeability window — drop expiries inside last-day chop (intraday quotes
+# get jumpy when there is <24h to settle and the IV inversion explodes for
+# tiny prob shifts) or too far out (Kalshi WTI series rarely list past ~60d
+# and any liquidity is vestigial when they do). KXWTI dailies close 1-2d
+# from listing so MIN_DTE must be small to capture them.
+MIN_DTE_DAYS = 1.0
+MAX_DTE_DAYS = 60
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
 
 
@@ -199,14 +214,40 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     )
 
 
+def _expiry_notional_usd(markets: list[dict]) -> float:
+    """Sum contracts * mid-price across markets in one expiry as a quick
+    pre-filter ranking. Bid/ask come from the /markets summary in dollars
+    (the orderbook backfill happens later, after expiry selection)."""
+    total = 0.0
+    for m in markets:
+        v = _to_float(m.get("volume_24h_fp"))
+        if v is None:
+            continue
+        bid = _to_float(m.get("yes_bid_dollars"))
+        ask = _to_float(m.get("yes_ask_dollars"))
+        if bid is not None and ask is not None:
+            mid = (bid + ask) / 2.0
+        else:
+            mid = _to_float(m.get("last_price_dollars"))
+        if mid is None:
+            continue
+        total += v * mid
+    return total
+
+
 async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
-    try:
-        markets = await _fetch_markets(client, SERIES_TICKER)
-    except Exception as e:
-        log.warning("kalshi: fetch failed: %s", e)
-        return []
+    fetches = await asyncio.gather(
+        *(_fetch_markets(client, s) for s in SERIES_TICKERS),
+        return_exceptions=True,
+    )
+    markets: list[dict] = []
+    for series, result in zip(SERIES_TICKERS, fetches, strict=True):
+        if isinstance(result, BaseException):
+            log.warning("kalshi: fetch %s failed: %s", series, result)
+            continue
+        markets.extend(result)
     if not markets:
-        log.info("kalshi: no markets returned for %s", SERIES_TICKER)
+        log.info("kalshi: no markets returned across %s", SERIES_TICKERS)
         return []
 
     F = await asyncio.to_thread(_fetch_underlying_sync)
@@ -214,22 +255,30 @@ async def collect(client: httpx.AsyncClient, ts: datetime) -> list[VolSnapshot]:
         log.warning("kalshi: no underlying CL=F price → cannot derive IV")
         return []
 
-    # Group by expiry (close_time).
+    # Group by expiry (close_time), filter to the tradeability window.
+    ts_sec = ts.timestamp()
+    def _dte_days(close_iso: str) -> float:
+        return (datetime.fromisoformat(close_iso.replace("Z", "+00:00")).timestamp() - ts_sec) / 86400
+
     by_expiry: dict[str, list[dict]] = {}
     for m in markets:
         ct = m.get("close_time")
         if not ct:
             continue
+        dte = _dte_days(ct)
+        if dte < MIN_DTE_DAYS or dte > MAX_DTE_DAYS:
+            continue
         by_expiry.setdefault(ct, []).append(m)
     if not by_expiry:
+        log.info("kalshi: no expiries in window [%dd, %dd]", MIN_DTE_DAYS, MAX_DTE_DAYS)
         return []
 
-    # Pick the expiry whose distance from `ts + TARGET_TENOR_DAYS` is smallest.
-    target = ts.timestamp() + TARGET_TENOR_DAYS * 86400
-    def _dist(close_iso: str) -> float:
-        return abs(datetime.fromisoformat(close_iso.replace("Z", "+00:00")).timestamp() - target)
-    best_expiry = min(by_expiry, key=_dist)
+    # Pick the expiry with the highest 24h notional inside the window.
+    best_expiry = max(by_expiry, key=lambda e: _expiry_notional_usd(by_expiry[e]))
     best_close = datetime.fromisoformat(best_expiry.replace("Z", "+00:00"))
+    log.info("kalshi: chose expiry %s (~%.0fd, ~$%.0f 24h notional) from %d candidates",
+             best_close.date(), _dte_days(best_expiry),
+             _expiry_notional_usd(by_expiry[best_expiry]), len(by_expiry))
     T_years = max((best_close.timestamp() - ts.timestamp()) / (365.25 * 86400), 1 / (365.25 * 24 * 60))
 
     chosen = by_expiry[best_expiry]
