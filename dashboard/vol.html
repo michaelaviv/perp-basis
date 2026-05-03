@@ -747,10 +747,12 @@ const PLOTLY_OPTS = { displayModeBar: false, responsive: true };
 // either fresh-as-of-capture (collector enforced) or absent.
 async function renderSmile() {
   // Pull all quotes from snapshots in the last 24 hours of the loaded range.
+  // Cast ts to plain TIMESTAMP for the INTERVAL arithmetic — DuckDB-WASM
+  // doesn't have a `TIMESTAMP WITH TIME ZONE − INTERVAL` overload.
   const rows = await rowsOf(`
     SELECT * FROM vol_quotes
     WHERE mid_iv IS NOT NULL
-      AND ts >= (SELECT max(ts) - INTERVAL '24 hours' FROM vol_quotes)
+      AND ts::TIMESTAMP >= (SELECT max(ts::TIMESTAMP) - INTERVAL '24 hours' FROM vol_quotes)
   `);
 
   // Group quotes by snapshot timestamp.
