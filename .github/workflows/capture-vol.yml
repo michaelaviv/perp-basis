@@ -42,8 +42,11 @@ jobs:
         run: |
           git config merge.ours.driver true
           # Only stage the vol-pipeline outputs so we don't accidentally
-          # commit work in flight from the basis pipeline.
-          git add data/options_snapshots/ data/options_daily/ data/manifest.json data/vol_latest.json 2>/dev/null || true
+          # commit work in flight from the basis pipeline. Use -f to skip
+          # any .gitignore filters; -A under the prefix to grab new files.
+          git add -A -- data/options_snapshots/ data/options_daily/ data/manifest.json data/vol_latest.json 2>&1 || echo "(some paths missing — ignoring)"
+          echo "--- staged diff summary ---"
+          git diff --cached --stat | tail -20
           if git diff --cached --quiet; then
             echo "No vol changes to commit"
             exit 0
