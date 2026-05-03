@@ -39,29 +39,32 @@ def _fetch_sync() -> tuple[float | None, float | None, datetime | None]:
     """Returns (ovx_value, cl_f_close, ovx_bar_ts_utc). Each may be None on failure."""
     import yfinance as yf
 
+    from perp_basis.collectors_vol._yf_shared import YF_LOCK
+
     ovx_val: float | None = None
     bar_ts: datetime | None = None
-    try:
-        h = yf.Ticker("^OVX").history(period="5d", interval="1d", auto_adjust=False)
-        if h is not None and not h.empty:
-            ovx_val = float(h["Close"].iloc[-1])
-            ts_index = h.index[-1]
-            try:
-                bar_ts = ts_index.tz_convert("UTC").to_pydatetime()
-            except Exception:
-                bar_ts = ts_index.to_pydatetime().replace(tzinfo=timezone.utc)
-    except Exception as e:
-        log.warning("ovx: ^OVX fetch failed: %s", e)
-
     cl_val: float | None = None
-    try:
-        h = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
-        if h is None or h.empty:
-            h = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
-        if h is not None and not h.empty:
-            cl_val = float(h["Close"].iloc[-1])
-    except Exception as e:
-        log.warning("ovx: CL=F fetch failed: %s", e)
+    with YF_LOCK:
+        try:
+            h = yf.Ticker("^OVX").history(period="5d", interval="1d", auto_adjust=False)
+            if h is not None and not h.empty:
+                ovx_val = float(h["Close"].iloc[-1])
+                ts_index = h.index[-1]
+                try:
+                    bar_ts = ts_index.tz_convert("UTC").to_pydatetime()
+                except Exception:
+                    bar_ts = ts_index.to_pydatetime().replace(tzinfo=timezone.utc)
+        except Exception as e:
+            log.warning("ovx: ^OVX fetch failed: %s", e)
+
+        try:
+            h = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
+            if h is None or h.empty:
+                h = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
+            if h is not None and not h.empty:
+                cl_val = float(h["Close"].iloc[-1])
+        except Exception as e:
+            log.warning("ovx: CL=F fetch failed: %s", e)
 
     return ovx_val, cl_val, bar_ts
 

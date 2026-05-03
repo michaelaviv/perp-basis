@@ -54,16 +54,19 @@ def _fetch_underlying_sync() -> float | None:
     """Current CL=F front-month price for use as F in IV inversion."""
     import yfinance as yf
 
-    try:
-        hist = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
-        if hist is None or hist.empty:
-            hist = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
-        if hist is None or hist.empty:
+    from perp_basis.collectors_vol._yf_shared import YF_LOCK
+
+    with YF_LOCK:
+        try:
+            hist = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
+            if hist is None or hist.empty:
+                hist = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
+            if hist is None or hist.empty:
+                return None
+            return float(hist["Close"].iloc[-1])
+        except Exception as e:
+            log.warning("kalshi: yfinance CL=F fetch failed: %s", e)
             return None
-        return float(hist["Close"].iloc[-1])
-    except Exception as e:
-        log.warning("kalshi: yfinance CL=F fetch failed: %s", e)
-        return None
 
 
 async def _fetch_markets(client: httpx.AsyncClient, series: str) -> list[dict]:

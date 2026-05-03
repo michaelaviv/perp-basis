@@ -63,7 +63,13 @@ def _fetch_chain_sync() -> dict:
     import pandas as pd
     import yfinance as yf
 
+    from perp_basis.collectors_vol._yf_shared import YF_LOCK
+
     out: dict = {}
+    # Hold the shared yfinance lock for the whole fetch (USO history + CL=F
+    # history + option chain + lastTradeDate scan). Released in `finally`
+    # whether the body succeeds, returns early, or raises.
+    YF_LOCK.acquire()
     try:
         uso_t = yf.Ticker(ETF_TICKER)
         h = uso_t.history(period="1d", interval="1m", auto_adjust=False)
@@ -111,6 +117,8 @@ def _fetch_chain_sync() -> dict:
             out["max_trade_ts"] = max_ts.to_pydatetime()
     except Exception as e:
         log.warning("cboe_uso: chain fetch failed: %s", e)
+    finally:
+        YF_LOCK.release()
     return out
 
 

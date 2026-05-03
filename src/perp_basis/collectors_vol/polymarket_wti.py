@@ -40,16 +40,19 @@ BELOW_RE = re.compile(r"<\s*\$\s*([\d.]+)")
 def _fetch_underlying_sync() -> float | None:
     import yfinance as yf
 
-    try:
-        hist = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
-        if hist is None or hist.empty:
-            hist = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
-        if hist is None or hist.empty:
+    from perp_basis.collectors_vol._yf_shared import YF_LOCK
+
+    with YF_LOCK:
+        try:
+            hist = yf.Ticker("CL=F").history(period="1d", interval="1m", auto_adjust=False)
+            if hist is None or hist.empty:
+                hist = yf.Ticker("CL=F").history(period="5d", interval="5m", auto_adjust=False)
+            if hist is None or hist.empty:
+                return None
+            return float(hist["Close"].iloc[-1])
+        except Exception as e:
+            log.warning("polymarket: yfinance CL=F fetch failed: %s", e)
             return None
-        return float(hist["Close"].iloc[-1])
-    except Exception as e:
-        log.warning("polymarket: yfinance CL=F fetch failed: %s", e)
-        return None
 
 
 def _parse_outcome_yes_index(outcomes_raw) -> int | None:
