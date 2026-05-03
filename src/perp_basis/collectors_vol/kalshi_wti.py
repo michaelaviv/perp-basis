@@ -121,7 +121,11 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     bid_c, ask_c = market.get("yes_bid"), market.get("yes_ask")
     if bid_c is not None and ask_c is not None and prob > 0:
         spread = (ask_c - bid_c) / 100.0  # convert cents → dollars
-        if spread / prob > 0.25:
+        # Harmonized with polymarket_wti.py at 33% (geometric mean of the
+        # earlier 25%/50% asymmetry). The IV sanity band catches what gets
+        # through; matching gates avoids biasing the Kalshi-vs-Polymarket
+        # comparison toward Polymarket because Kalshi was filtered tighter.
+        if spread / prob > 0.33:
             return None
     strike_type = market.get("strike_type")
     floor = market.get("floor_strike")

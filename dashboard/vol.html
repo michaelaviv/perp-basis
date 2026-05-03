@@ -467,16 +467,27 @@ async function renderNow() {
   const byVenue = new Map();
   for (const r of (latest.rows ?? [])) byVenue.set(r.venue, r);
 
-  function atmFor(r) {
+  // Returns {iv, strike, distance, isRange} for the strike closest to spot.
+  // Caller uses these to render an honest "ATM" with its strike distance and
+  // a flag if the closest strike is a range market (Polymarket).
+  function atmInfo(r) {
     if (!r || !r.quotes?.length || r.underlying_px == null) return null;
-    let best = r.quotes[0], bestDist = Math.abs((best.strike ?? 0) - r.underlying_px);
+    let best = null, bestDist = Infinity;
     for (const q of r.quotes) {
       if (q.mid_iv == null || q.strike == null) continue;
       const d = Math.abs(q.strike - r.underlying_px);
       if (d < bestDist) { best = q; bestDist = d; }
     }
-    return best?.mid_iv ?? null;
+    if (!best) return null;
+    return {
+      iv: best.mid_iv,
+      strike: best.strike,
+      distance: bestDist,
+      isRange: best.lo_strike != null && best.hi_strike != null,
+    };
   }
+  // Convenience for code that only needs the IV.
+  function atmFor(r) { return atmInfo(r)?.iv ?? null; }
 
   function fmtAge(sec) {
     if (sec == null) return "<small>—</small>";
@@ -486,11 +497,18 @@ async function renderNow() {
     return `<small style="color:var(--warn)">${Math.round(sec / (24 * 3600))}d old</small>`;
   }
 
+  // Days-to-expiry from snapshot ts to a venue's expiry.
+  const tsMs = latest.ts ? new Date(latest.ts).getTime() : Date.now();
+  function dteFor(r) {
+    if (!r?.expiry) return null;
+    const e = new Date(r.expiry).getTime();
+    if (Number.isNaN(e)) return null;
+    return Math.max(0, Math.round((e - tsMs) / 86400000));
+  }
+
   const cards = VOL_VENUES.map(v => {
     const r = byVenue.get(v);
     if (!r) {
-      // Venue collector returned no rows in this snapshot — usually because
-      // the underlying market is closed (CBOE option chain on weekends).
       return `
         <div class="vol-card">
           <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
@@ -499,39 +517,56 @@ async function renderNow() {
           <div class="vol24"></div>
         </div>`;
     }
-    const atm = atmFor(r);
+    const info = atmInfo(r);
     const expiry = r.expiry ?? "—";
+    const dte = dteFor(r);
+    const dteText = dte != null ? `${expiry} <span style="color:var(--text-2)">(${dte}d)</span>` : expiry;
+    // Strike-distance warning: any "closest strike" more than $0.75 from spot
+    // isn't really ATM. For range markets, also flag explicitly.
+    let strikeNote = "";
+    if (info && info.distance > 0.75) {
+      const sd = info.distance.toFixed(1);
+      strikeNote = ` <span title="closest available strike is $${sd} from spot — this isn't a true ATM" style="color:var(--warn);font-size:.7rem">⚠ K$${info.strike.toFixed(0)} · $${sd} OTM</span>`;
+    }
+    if (info?.isRange) {
+      strikeNote += ` <span title="ATM picked from a range market — IV is the smile midpoint, not a single-strike quote" style="color:var(--text-2);font-size:.7rem">[range]</span>`;
+    }
     return `
       <div class="vol-card">
         <span class="venue"><span class="swatch" style="background:${COLOR[v]}"></span>${VENUE_LABEL[v]}</span>
-        <div class="iv">${fmtIv(atm)}</div>
-        <div class="meta-line">expiry ${expiry} · ${fmtAge(r.data_age_sec)}</div>
+        <div class="iv">${fmtIv(info?.iv)}</div>
+        <div class="meta-line">${dteText} · ${fmtAge(r.data_age_sec)}${strikeNote}</div>
         <div class="vol24">${r.total_volume_24h_usd != null ? "24h vol " + fmtUsd(r.total_volume_24h_usd) : ""}</div>
       </div>`;
   }).join("");
 
-  // Headline gap: average pred-mkt ATM minus CBOE ATM.
-  const predIvs = ["kalshi", "polymarket"]
-    .map(v => atmFor(byVenue.get(v)))
-    .filter(x => x != null);
+  // Headline: show pred-vs-CBOE gaps PER VENUE rather than averaging Kalshi
+  // and Polymarket — they typically have different tenors (Kalshi ~7d,
+  // Polymarket ~30-60d), so averaging them mixes apples and oranges.
   const cboeIv = atmFor(byVenue.get("cboe_uso"));
-  let gapHtml = "";
-  if (predIvs.length && cboeIv != null) {
-    const predAvg = predIvs.reduce((a, b) => a + b, 0) / predIvs.length;
-    const gap = (predAvg - cboeIv) * 100;
-    const sign = gap >= 0 ? "+" : "";
-    const cls = gap >= 0 ? "pos" : "neg";
-    gapHtml = `<div class="gap-headline">Avg pred-mkt vs CBOE: <strong style="color:var(--${cls === 'pos' ? 'pos' : 'neg'})">${sign}${gap.toFixed(1)} vol pts</strong></div>`;
+  const headlineParts = [];
+  if (cboeIv != null) {
+    for (const v of ["kalshi", "polymarket"]) {
+      const iv = atmFor(byVenue.get(v));
+      if (iv == null) continue;
+      const gap = (iv - cboeIv) * 100;
+      const sign = gap >= 0 ? "+" : "";
+      const cls = gap >= 0 ? "pos" : "neg";
+      headlineParts.push(`${VENUE_LABEL[v]} <strong style="color:var(--${cls})">${sign}${gap.toFixed(1)} vp</strong>`);
+    }
   }
+  const gapHtml = headlineParts.length
+    ? `<div class="gap-headline">vs CBOE: ${headlineParts.join(" · ")}</div>`
+    : "";
 
   container.innerHTML = `
     <div class="vol-now">
       <div class="vol-now-header">
-        <h2><span class="num" style="display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:rgba(34,211,238,.12);color:var(--accent);font-size:.72rem;font-weight:700;margin-right:.55rem">1</span>Now · 30-day forward IV</h2>
+        <h2><span class="num" style="display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:rgba(34,211,238,.12);color:var(--accent);font-size:.72rem;font-weight:700;margin-right:.55rem">1</span>Now · forward IV (per venue's own expiry)</h2>
         <span class="product">WTI Crude</span>
       </div>
       <div class="vol-now-grid">${cards}</div>
-      <div class="vol-now-footer">${gapHtml}<div style="color:var(--text-2);font-size:.75rem">CBOE/USO is per-strike; OVX is the single-number 30-day ATM benchmark.</div></div>
+      <div class="vol-now-footer">${gapHtml}<div style="color:var(--text-2);font-size:.75rem">Pred-market venues use their own settle dates (Kalshi weekly, Polymarket monthly). Tenors differ — see DTE on each card.</div></div>
     </div>`;
 }
 
@@ -640,26 +675,45 @@ async function renderSmile() {
     const filt = rows.filter(r => r.venue === venue);
     if (!filt.length) continue;
     filt.sort((a, b) => a.strike - b.strike);
-    // Dot size scaled by log notional, capped to a reasonable range.
-    const sizes = filt.map(r => {
-      const v = r.volume_24h_usd ?? 0;
-      const s = 6 + Math.min(18, Math.log10(1 + v) * 3.5);
-      return s;
-    });
-    traces.push({
-      x: filt.map(r => r.strike),
-      y: filt.map(r => r.mid_iv * 100),
-      name: VENUE_LABEL[venue],
-      mode: "markers",
-      type: "scatter",
-      marker: { color: COLOR[venue], size: sizes, opacity: 0.7, line: { color: COLOR[venue], width: 1 } },
-      hovertemplate:
-        "<b>" + VENUE_LABEL[venue] + "</b><br>" +
-        "Strike: $%{x:.2f}<br>" +
-        "IV: %{y:.1f}%<br>" +
-        "24h vol: %{customdata|$,.0f}<extra></extra>",
-      customdata: filt.map(r => r.volume_24h_usd ?? 0),
-    });
+
+    // Split each venue's quotes into single-sided (above/below) vs range
+    // (lo+hi both set). Plot them as separate traces with different marker
+    // shapes — visually distinguishes structurally different contracts that
+    // would otherwise plot at the same strike (a "between $95-$105" range
+    // mid is $100; a ">$100" market is also $100, but they price different
+    // statistics).
+    const singles = filt.filter(r => !(r.lo_strike != null && r.hi_strike != null));
+    const ranges  = filt.filter(r =>  (r.lo_strike != null && r.hi_strike != null));
+    const sizeFor = (r) => 6 + Math.min(18, Math.log10(1 + (r.volume_24h_usd ?? 0)) * 3.5);
+
+    if (singles.length) {
+      traces.push({
+        x: singles.map(r => r.strike),
+        y: singles.map(r => r.mid_iv * 100),
+        name: VENUE_LABEL[venue],
+        mode: "markers", type: "scatter",
+        marker: { color: COLOR[venue], size: singles.map(sizeFor), opacity: 0.7, symbol: "circle",
+                  line: { color: COLOR[venue], width: 1 } },
+        hovertemplate:
+          "<b>" + VENUE_LABEL[venue] + "</b> · single-sided<br>" +
+          "Strike: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata|$,.0f}<extra></extra>",
+        customdata: singles.map(r => r.volume_24h_usd ?? 0),
+      });
+    }
+    if (ranges.length) {
+      traces.push({
+        x: ranges.map(r => r.strike),
+        y: ranges.map(r => r.mid_iv * 100),
+        name: VENUE_LABEL[venue] + " (range)",
+        mode: "markers", type: "scatter",
+        marker: { color: COLOR[venue], size: ranges.map(sizeFor), opacity: 0.7, symbol: "diamond",
+                  line: { color: COLOR[venue], width: 1.4 } },
+        hovertemplate:
+          "<b>" + VENUE_LABEL[venue] + "</b> · range %{customdata[1]:.1f}–%{customdata[2]:.1f}<br>" +
+          "Mid: $%{x:.2f}<br>IV: %{y:.1f}%<br>24h vol: %{customdata[0]|$,.0f}<extra></extra>",
+        customdata: ranges.map(r => [r.volume_24h_usd ?? 0, r.lo_strike, r.hi_strike]),
+      });
+    }
   }
   // OVX horizontal reference line
   const ovxRows = rows.filter(r => r.venue === "ovx");
@@ -809,9 +863,13 @@ async function renderDispersion() {
 
   const traces = PAIRS.map(pair => {
     const data = seriesByPair.get(pair.name).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    // Hover shows both legs' DTE so the term-structure mismatch is visible.
+    // OVX is constant-30d, so its DTE column is fixed at 30 (a known approximation).
     const tradHover = pair.trad === "ovx"
-      ? "trad <b>OVX</b> %{customdata[1]:.1f}% (30d index)"
-      : "trad <b>CBOE</b> %{customdata[1]:.1f}% @ K%{customdata[5]:.0f} (%{customdata[3]:.0f}d)";
+      ? "trad <b>OVX</b> %{customdata[1]:.1f}% (30d index)<br>" +
+        "<span style='color:#a0a8bd'>term mismatch: %{customdata[6]:.0f}d</span>"
+      : "trad <b>CBOE</b> %{customdata[1]:.1f}% @ K%{customdata[5]:.0f} (%{customdata[3]:.0f}d)<br>" +
+        "<span style='color:#a0a8bd'>term mismatch: %{customdata[6]:.0f}d</span>";
     return {
       x: data.map(d => d.ts),
       y: data.map(d => d.gap),
@@ -819,7 +877,12 @@ async function renderDispersion() {
       mode: "lines+markers", type: "scatter",
       line: { color: pair.color, width: 1.6, shape: "spline", smoothing: 0.4, dash: pair.dash },
       marker: { color: pair.color, size: 5 },
-      customdata: data.map(d => [d.pred_iv, d.trad_iv, d.pred_dte, d.trad_dte, d.pred_strike, d.trad_strike]),
+      customdata: data.map(d => [
+        d.pred_iv, d.trad_iv,
+        d.pred_dte, d.trad_dte,
+        d.pred_strike, d.trad_strike,
+        Math.abs(d.pred_dte - d.trad_dte),  // [6] term-structure mismatch in days
+      ]),
       hovertemplate:
         "%{x|%Y-%m-%d %H:%M}<br>" +
         "<b>" + pair.name + ": %{y:+.1f} vp</b><br>" +
@@ -836,57 +899,102 @@ async function renderDispersion() {
 }
 
 // ----- §5 Top dislocation events -----
+//
+// Match each pred-market quote to its closest CBOE leg in TWO stages:
+//   1. closest CBOE expiry to the pred's expiry (term-structure matching)
+//   2. within that expiry, closest CBOE strike (strike matching)
+// Sorted by |pred_iv − cboe_iv|, top 10. Always show both legs' DTE +
+// strike so the user can see how loose each comparison is — a 10-vol-pt
+// gap with a 30-day tenor mismatch is much weaker signal than the same
+// gap with a 1-day mismatch.
 async function renderTopEvents() {
   const venueFilter = document.getElementById("events-venue")?.value || "";
   const minVolStr = document.getElementById("events-minvol")?.value || "0";
   const minVol = Number(minVolStr) || 0;
-  const venueClause = venueFilter ? `AND p.venue = '${venueFilter}'` : "AND p.venue IN ('kalshi','polymarket')";
+  const venuesSql = venueFilter ? `'${venueFilter}'` : `'kalshi','polymarket'`;
 
-  // For each prediction-market quote, find the nearest CBOE strike at the same ts, compute IV gap.
-  // To keep this simple in DuckDB, do an ASOF-style nearest-strike join via correlated subquery.
-  const rows = await rowsOf(`
-    WITH cboe AS (
-      SELECT ts, strike, mid_iv FROM vol_quotes WHERE venue = 'cboe_uso' AND mid_iv IS NOT NULL
-    ),
-    pred AS (
-      SELECT ts, venue, expiry, strike, mid_iv, volume_24h_usd, market_id, underlying_px
-      FROM vol_quotes p
-      WHERE mid_iv IS NOT NULL ${venueClause.replace(/^AND /, "AND ")}
-        AND (volume_24h_usd IS NULL OR volume_24h_usd >= ${minVol})
-    )
-    SELECT p.ts, p.venue, p.expiry, p.strike, p.mid_iv AS pred_iv, p.volume_24h_usd, p.underlying_px,
-           (SELECT mid_iv FROM cboe c
-            WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1) AS cboe_iv,
-           (SELECT strike  FROM cboe c
-            WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1) AS cboe_strike
-    FROM pred p
-    WHERE EXISTS (SELECT 1 FROM cboe c WHERE c.ts = p.ts)
-    ORDER BY abs(pred_iv - (SELECT mid_iv FROM cboe c WHERE c.ts = p.ts ORDER BY abs(c.strike - p.strike) ASC LIMIT 1)) DESC
-    LIMIT 10
+  const cboe = await rowsOf(`
+    SELECT ts, expiry, strike, mid_iv
+    FROM vol_quotes WHERE venue = 'cboe_uso' AND mid_iv IS NOT NULL
   `);
+  const pred = await rowsOf(`
+    SELECT ts, venue, expiry, strike, mid_iv, volume_24h_usd, underlying_px,
+           lo_strike, hi_strike
+    FROM vol_quotes
+    WHERE mid_iv IS NOT NULL AND venue IN (${venuesSql})
+      AND (volume_24h_usd IS NULL OR volume_24h_usd >= ${minVol})
+  `);
+
+  // Index CBOE by ts so we can do per-snapshot expiry+strike matching in JS.
+  const cboeByTs = new Map();
+  for (const c of cboe) {
+    if (!cboeByTs.has(c.ts)) cboeByTs.set(c.ts, []);
+    cboeByTs.get(c.ts).push(c);
+  }
+
+  const events = [];
+  for (const p of pred) {
+    const candidates = cboeByTs.get(p.ts);
+    if (!candidates || !candidates.length) continue;
+    const tsMs = new Date(p.ts).getTime();
+    const dte = (iso) => (new Date(iso).getTime() - tsMs) / 86400000;
+    const predDte = dte(p.expiry);
+
+    // Stage 1: pick CBOE expiry closest to pred's
+    const enriched = candidates.map(c => ({ ...c, _dte: dte(c.expiry), _ed: Math.abs(dte(c.expiry) - predDte) }));
+    const minEd = Math.min(...enriched.map(c => c._ed));
+    const sameExpiry = enriched.filter(c => c._ed === minEd);
+    // Stage 2: within that expiry, closest strike
+    const match = sameExpiry.reduce((best, c) =>
+      Math.abs(c.strike - p.strike) < Math.abs(best.strike - p.strike) ? c : best,
+      sameExpiry[0]);
+
+    events.push({
+      ts: p.ts, venue: p.venue,
+      pred_expiry: p.expiry, pred_strike: p.strike, pred_iv: p.mid_iv,
+      pred_dte: predDte,
+      pred_is_range: p.lo_strike != null && p.hi_strike != null,
+      cboe_expiry: match.expiry, cboe_strike: match.strike, cboe_iv: match.mid_iv,
+      cboe_dte: match._dte,
+      tenor_mismatch: Math.abs(match._dte - predDte),
+      strike_mismatch: Math.abs(match.strike - p.strike),
+      gap: (p.mid_iv - match.mid_iv) * 100,
+      volume_24h_usd: p.volume_24h_usd,
+    });
+  }
+  events.sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+  const top = events.slice(0, 10);
 
   let html = `<thead><tr>
     <th style="text-align:right">#</th>
-    <th>Timestamp (UTC)</th><th>Venue</th><th>Expiry</th>
-    <th style="text-align:right">Strike</th>
+    <th>Timestamp (UTC)</th><th>Venue</th>
+    <th>Pred</th><th>CBOE</th>
     <th style="text-align:right">Pred IV</th>
     <th style="text-align:right">CBOE IV</th>
     <th style="text-align:right">Gap (vp)</th>
     <th style="text-align:right">24h vol</th>
   </tr></thead><tbody>`;
-  if (!rows.length) {
+  if (!top.length) {
     html += `<tr><td colspan="9" class="empty">No dislocation events match your filters yet.</td></tr>`;
   }
-  rows.forEach((r, i) => {
-    const gap = (r.pred_iv - r.cboe_iv) * 100;
+  top.forEach((r, i) => {
+    const gap = r.gap;
     const cls = gap > 0 ? "pos" : "neg";
     const sign = gap >= 0 ? "+" : "";
+    // Match-quality flags: tenor > 5d OR strike > $1 = loose comparison.
+    const tenorWarn = r.tenor_mismatch > 5
+      ? ` <span title="tenor gap ${r.tenor_mismatch.toFixed(0)}d" style="color:var(--warn);font-size:.7rem">⚠</span>` : "";
+    const strikeWarn = r.strike_mismatch > 1
+      ? ` <span title="strike gap $${r.strike_mismatch.toFixed(1)}" style="color:var(--warn);font-size:.7rem">⚠</span>` : "";
+    const rangeNote = r.pred_is_range ? ` <span title="range market" style="color:var(--text-2);font-size:.7rem">[range]</span>` : "";
+    const predDesc = `<div>K $${r.pred_strike.toFixed(1)}${rangeNote}</div><div style="color:var(--text-2);font-size:.72rem">${r.pred_expiry} (${r.pred_dte.toFixed(0)}d)</div>`;
+    const cboeDesc = `<div>K $${r.cboe_strike.toFixed(1)}${strikeWarn}</div><div style="color:var(--text-2);font-size:.72rem">${r.cboe_expiry} (${r.cboe_dte.toFixed(0)}d)${tenorWarn}</div>`;
     html += `<tr>
       <td class="mono" style="text-align:right;color:var(--muted)">${i + 1}</td>
       <td class="mono">${new Date(r.ts).toISOString().slice(0,16).replace("T", " ")}</td>
       <td><span class="venue"><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${COLOR[r.venue]};margin-right:.4rem"></span>${VENUE_LABEL[r.venue]}</span></td>
-      <td>${r.expiry}</td>
-      <td class="mono" style="text-align:right">$${Number(r.strike).toFixed(1)}</td>
+      <td class="mono">${predDesc}</td>
+      <td class="mono">${cboeDesc}</td>
       <td class="mono" style="text-align:right">${(r.pred_iv*100).toFixed(1)}%</td>
       <td class="mono" style="text-align:right">${(r.cboe_iv*100).toFixed(1)}%</td>
       <td class="mono gap ${cls}" style="text-align:right">${sign}${gap.toFixed(1)}</td>

@@ -126,22 +126,26 @@ def _quote_for(market: dict, F: float, T_years: float) -> StrikeQuote | None:
     # Sanity band — drop inversion artifacts outside any plausible vol regime.
     if iv < 0.05 or iv > 2.5:
         return None
-    # Liquidity sanity: skip quotes with bid-ask spread > 50% of midpoint.
-    # Prediction markets are inherently wide-spread, so we set this looser
-    # than for option chains. The IV-range gate above catches the true
-    # garbage; this just trims the worst illiquid wings.
+    # Harmonized with kalshi_wti.py at 33% (geometric mean of the earlier
+    # 25%/50% asymmetry). The IV sanity band catches what gets through;
+    # matching gates avoids biasing the Kalshi-vs-Polymarket comparison.
     bid = market.get("bestBid")
     ask = market.get("bestAsk")
     try:
         if bid is not None and ask is not None and prob > 0:
             spread = float(ask) - float(bid)
-            if spread / prob > 0.50:
+            if spread / prob > 0.33:
                 return None
     except (TypeError, ValueError):
         pass
 
+    # Polymarket reports `volume24hr` as raw USDC traded (both YES and NO sides
+    # of the binary). To make this comparable to Kalshi's `contracts × mid_price`
+    # notional, multiply by the YES-side mid-prob — the equivalent "amount of
+    # YES exposure transferred". Without this conversion, low-prob markets
+    # appear ~10× their true notional and §6 vol depth misleads.
     vol24 = market.get("volume24hr")
-    notional_usd = float(vol24) if vol24 is not None else None
+    notional_usd = float(vol24) * prob if (vol24 is not None and prob is not None) else None
 
     bid = market.get("bestBid")
     ask = market.get("bestAsk")

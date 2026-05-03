@@ -41,6 +41,10 @@ jobs:
           GIT_COMMITTER_EMAIL: perp-basis-bot@users.noreply.github.com
         run: |
           git config merge.ours.driver true
+          # Explicit reconciliation strategy so `git pull` doesn't bail with
+          # 'Need to specify how to reconcile divergent branches' when the
+          # cron run lands during another push.
+          git config pull.rebase false
           # Only stage the vol-pipeline outputs so we don't accidentally
           # commit work in flight from the basis pipeline. Stage each path
           # independently so a missing-but-optional path (e.g. options_daily/
