@@ -435,6 +435,11 @@
   <section class="panel">
     <h2><span class="num">2</span> Net carry % through time</h2>
     <p class="desc">The total — basis convergence + funding. Same math as the Net column in section 1, evaluated at every snapshot. Compare with section 3 below: the gap between net and gross IS the funding contribution.</p>
+    <div class="section-filters" id="net-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Window:</span>
+      <button class="preset" data-days="1">24h</button>
+      <button class="preset active" data-days="7">7d</button>
+    </div>
     <div class="grid-2">
       <div id="chart-carry-gold" class="chart"></div>
       <div id="chart-carry-wti" class="chart"></div>
@@ -444,6 +449,11 @@
   <section class="panel">
     <h2><span class="num">3</span> Gross carry % through time · the locked piece</h2>
     <p class="desc">Basis-only annualized carry — what's structurally locked in at entry by hold-to-expiry. <strong style="color:var(--pos)">This is the "guaranteed floor" component</strong>. If this line is high and stable, the trade has a durable structural edge regardless of funding.</p>
+    <div class="section-filters" id="gross-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Window:</span>
+      <button class="preset" data-days="1">24h</button>
+      <button class="preset active" data-days="7">7d</button>
+    </div>
     <div class="grid-2">
       <div id="chart-gross-gold" class="chart"></div>
       <div id="chart-gross-wti" class="chart"></div>
@@ -453,6 +463,11 @@
   <section class="panel">
     <h2><span class="num">4</span> Perp-vs-Perp basis · 24/7</h2>
     <p class="desc">All three pairwise basis lines between the crypto venues. Lives through weekends and CME closures. Sign: <code>(A − B) / B × 10 000</code>.</p>
+    <div class="section-filters" id="perpbasis-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Window:</span>
+      <button class="preset" data-days="1">24h</button>
+      <button class="preset active" data-days="7">7d</button>
+    </div>
     <div class="grid-2">
       <div id="chart-perpbasis-gold" class="chart"></div>
       <div id="chart-perpbasis-wti" class="chart"></div>
@@ -462,7 +477,10 @@
   <section class="panel">
     <h2><span class="num">5</span> Top dislocation events</h2>
     <p class="desc">Top 10 largest |basis| events in the selected range, ranked by absolute basis. Gross carry annualizes the dislocation against time-to-CME-expiry — a 30 bps basis 60 days from expiry is a much bigger trade than 30 bps with 1 day left.</p>
-    <div class="section-filters">
+    <div class="section-filters" id="events-filters">
+      <span style="color: var(--text-2); font-size: .78rem;">Window:</span>
+      <button class="preset" data-days="1">24h</button>
+      <button class="preset active" data-days="7">7d</button>
       <label>Venue
         <select id="events-venue">
           <option value="">All</option>
@@ -969,6 +987,21 @@ function withGaps(rows, tsKey, valueKey, gapMs = 30 * 60 * 1000) {
   return { x, y };
 }
 
+// Per-section window helpers. Cutoff is anchored to the data's max ts (not
+// wall-clock now) so toggles still work if the cron is briefly behind.
+function getActiveDays(filterId) {
+  const btn = document.querySelector(`#${filterId} .preset.active`);
+  return btn ? Number(btn.dataset.days) : null;
+}
+function filterByWindowDays(rows, days, tsKey = "ts") {
+  if (!days || rows.length === 0) return rows;
+  let maxTs = 0;
+  for (const r of rows) { const t = new Date(r[tsKey]).getTime(); if (t > maxTs) maxTs = t; }
+  if (!isFinite(maxTs) || maxTs === 0) return rows;
+  const cutoff = maxTs - days * 86400000;
+  return rows.filter(r => new Date(r[tsKey]).getTime() >= cutoff);
+}
+
 async function renderCarryTs() {
   // CME ts = bar market time (post-2026-05 fix); perp ts = live capture time.
   // ASOF picks the most recent CME bar at-or-before each perp print, dropping
@@ -1006,9 +1039,11 @@ async function renderCarryTs() {
     };
   });
 
-  // Render both gross and net side-by-side per product (sections 2 + 3 share data).
-  drawCarryChart(enriched, "netPct",   "chart-carry", "net carry %",   "basis + funding");
-  drawCarryChart(enriched, "grossPct", "chart-gross", "gross carry %", "locked, basis-only");
+  // Sections 2 and 3 share source data but each has its own window toggle.
+  drawCarryChart(filterByWindowDays(enriched, getActiveDays("net-filters")),
+                 "netPct",   "chart-carry", "net carry %",   "basis + funding");
+  drawCarryChart(filterByWindowDays(enriched, getActiveDays("gross-filters")),
+                 "grossPct", "chart-gross", "gross carry %", "locked, basis-only");
 }
 
 function drawCarryChart(enriched, key, idPrefix, label, subtitle) {
@@ -1034,7 +1069,7 @@ function drawCarryChart(enriched, key, idPrefix, label, subtitle) {
 }
 
 async function renderPerpBasis() {
-  const rows = await rowsOf(`
+  const allRows = await rowsOf(`
     WITH perp AS (
       SELECT ts, venue, product, mark_price
       FROM snapshots WHERE venue != 'cme_yahoo' AND venue NOT IN (${HIDDEN_SQL_LIST}) AND mark_price IS NOT NULL
@@ -1046,6 +1081,7 @@ async function renderPerpBasis() {
     WHERE a.venue < b.venue
     ORDER BY a.ts
   `);
+  const rows = filterByWindowDays(allRows, getActiveDays("perpbasis-filters"));
   const PAIR_COLOR = {
     "binance − hyperliquid": "#22d3ee",
     "binance − okx":         "#a78bfa",
@@ -1078,6 +1114,16 @@ async function renderTopEvents() {
   const ALLOWED_PRODUCTS = new Set(Object.keys(PRODUCT_LABEL));
   const venueClause = ALLOWED_VENUES.has(venueFilter) ? `AND p.venue = '${venueFilter}'` : "";
   const productClause = ALLOWED_PRODUCTS.has(productFilter) ? `AND p.product = '${productFilter}'` : "";
+  const eventDays = getActiveDays("events-filters");
+  let windowClause = "";
+  if (eventDays) {
+    const maxTsRow = (await rowsOf(`SELECT max(ts) AS m FROM snapshots WHERE venue != 'cme_yahoo'`))[0];
+    if (maxTsRow?.m) {
+      const cutoff = new Date(new Date(maxTsRow.m).getTime() - eventDays * 86400000)
+        .toISOString().slice(0, 19).replace("T", " ");
+      windowClause = `AND p.ts::TIMESTAMP >= TIMESTAMP '${cutoff}'`;
+    }
+  }
   const rows = await rowsOf(`
     WITH cme AS (
       SELECT ts, product, last_price AS cme_px
@@ -1096,6 +1142,7 @@ async function renderTopEvents() {
       AND epoch(p.ts::TIMESTAMP) - epoch(c.ts::TIMESTAMP) < 1800
       ${venueClause}
       ${productClause}
+      ${windowClause}
     ORDER BY ABS((p.perp_px - c.cme_px) / c.cme_px) DESC
     LIMIT 10
   `);
@@ -1272,6 +1319,22 @@ document.querySelectorAll("#funding-filters .preset").forEach(b => {
     renderFundingScatter().catch(e => console.error(e));
   });
 });
+// Per-section window toggles for sections 2, 3, 4, 5.
+const SECTION_WINDOW_FILTERS = [
+  ["#net-filters",       renderCarryTs],
+  ["#gross-filters",     renderCarryTs],
+  ["#perpbasis-filters", renderPerpBasis],
+  ["#events-filters",    renderTopEvents],
+];
+for (const [sel, fn] of SECTION_WINDOW_FILTERS) {
+  document.querySelectorAll(`${sel} .preset`).forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(`${sel} .preset`).forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      fn().catch(e => console.error(e));
+    });
+  });
+}
 document.querySelectorAll("#volume-filters .preset").forEach(b => {
   b.addEventListener("click", () => {
     document.querySelectorAll("#volume-filters .preset").forEach(x => x.classList.remove("active"));
