@@ -1,13 +1,14 @@
 {
-  "updated": "2026-05-06T03:56:04.996666Z",
+  "updated": "2026-05-06T03:56:58.433037Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
     "2026-05-02",
     "2026-05-03",
-    "2026-05-04"
+    "2026-05-04",
+    "2026-05-05"
   ],
-  "count": 5,
+  "count": 6,
   "intraday_date": "2026-05-06",
   "intraday_files": [
     "snapshots/2026/05/06/000059.parquet",
@@ -61,9 +62,10 @@
   ],
   "options_dates": [
     "2026-05-03",
-    "2026-05-04"
+    "2026-05-04",
+    "2026-05-05"
   ],
-  "options_count": 2,
+  "options_count": 3,
   "options_intraday_files": [
     "options_snapshots/2026/05/06/000917.parquet"
   ]
