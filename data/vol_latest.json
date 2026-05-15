@@ -1,15 +1,15 @@
 {
-  "ts": "2026-05-15T04:31:49.929542Z",
+  "ts": "2026-05-15T07:45:04.608064Z",
   "rows": [
     {
-      "ts": "2026-05-15T04:31:49.929542Z",
+      "ts": "2026-05-15T07:45:04.608064Z",
       "venue": "ovx",
       "product": "wti",
       "expiry": "2026-06-14",
-      "underlying_px": 102.5199966430664,
+      "underlying_px": 98.7300033569336,
       "quotes": [
         {
-          "strike": 102.5199966430664,
+          "strike": 98.7300033569336,
           "lo_strike": null,
           "hi_strike": null,
           "mid_iv": 0.6891999816894532,
@@ -24,20 +24,20 @@
         }
       ],
       "total_volume_24h_usd": null,
-      "data_age_sec": 88309
+      "data_age_sec": 99904
     },
     {
-      "ts": "2026-05-15T04:31:49.929542Z",
+      "ts": "2026-05-15T07:45:04.608064Z",
       "venue": "polymarket",
       "product": "wti",
       "expiry": "2026-06-30",
-      "underlying_px": 102.51000213623047,
+      "underlying_px": 98.7300033569336,
       "quotes": [
         {
           "strike": 59.5,
           "lo_strike": 56.0,
           "hi_strike": 63.0,
-          "mid_iv": 0.6059571677952019,
+          "mid_iv": 0.5582012716019936,
           "bid_px": 0.011,
           "ask_px": 0.014,
           "last_px": 0.016,
@@ -51,7 +51,7 @@
           "strike": 84.0,
           "lo_strike": 84.0,
           "hi_strike": null,
-          "mid_iv": 0.9915743452198009,
+          "mid_iv": 0.8452555860531747,
           "bid_px": 0.64,
           "ask_px": 0.66,
           "last_px": 0.65,
@@ -65,7 +65,7 @@
           "strike": 66.5,
           "lo_strike": 63.0,
           "hi_strike": 70.0,
-          "mid_iv": 0.6098850995417102,
+          "mid_iv": 0.5432039108093748,
           "bid_px": 0.033,
           "ask_px": 0.034,
           "last_px": 0.034,
@@ -79,7 +79,7 @@
           "strike": 73.5,
           "lo_strike": 70.0,
           "hi_strike": 77.0,
-          "mid_iv": 0.6674876682788222,
+          "mid_iv": 0.5396254170680883,
           "bid_px": 0.061,
           "ask_px": 0.08,
           "last_px": 0.055,
@@ -93,7 +93,7 @@
           "strike": 42.0,
           "lo_strike": null,
           "hi_strike": 42.0,
-          "mid_iv": 1.0590770202553128,
+          "mid_iv": 1.0191409717180862,
           "bid_px": 0.013,
           "ask_px": 0.017,
           "last_px": 0.013,
