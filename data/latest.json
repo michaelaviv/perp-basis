@@ -1,38 +1,38 @@
 {
-  "ts": "2026-05-17T15:00:57.377688Z",
+  "ts": "2026-05-17T15:05:41.053497Z",
   "rows": [
     {
-      "ts": "2026-05-17T15:00:57.377688Z",
+      "ts": "2026-05-17T15:05:41.053497Z",
       "venue": "okx",
       "product": "gold",
       "symbol": "XAU-USDT-SWAP",
-      "mark_price": 4539.6,
-      "last_price": 4539.6,
-      "bid": 4539.6,
-      "ask": 4539.7,
-      "volume_24h": 12162467.0,
-      "quote_volume_24h": 12162.467,
-      "funding_rate": 7.29666788664e-05,
-      "open_interest": 26333720.0,
+      "mark_price": 4539.3,
+      "last_price": 4539.4,
+      "bid": 4539.3,
+      "ask": 4539.4,
+      "volume_24h": 12107223.0,
+      "quote_volume_24h": 12107.223,
+      "funding_rate": 6.37915108031e-05,
+      "open_interest": 26334262.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-17T15:00:57.377688Z",
+      "ts": "2026-05-17T15:05:41.053497Z",
       "venue": "okx",
       "product": "wti",
       "symbol": "CL-USDT-SWAP",
-      "mark_price": 101.87,
-      "last_price": 101.88,
-      "bid": 101.87,
-      "ask": 101.88,
-      "volume_24h": 2792122.0,
-      "quote_volume_24h": 279212.2,
+      "mark_price": 101.88,
+      "last_price": 101.89,
+      "bid": 101.88,
+      "ask": 101.89,
+      "volume_24h": 2787628.0,
+      "quote_volume_24h": 278762.8,
       "funding_rate": 0.0,
-      "open_interest": 2342641.0,
+      "open_interest": 2343479.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-17T15:00:57.377688Z",
+      "ts": "2026-05-17T15:05:41.053497Z",
       "venue": "hyperliquid",
       "product": "gold",
       "symbol": "xyz:GOLD",
@@ -40,14 +40,14 @@
       "last_price": 4536.95,
       "bid": 4536.9,
       "ask": 4537.0,
-      "volume_24h": 1480.5662,
-      "quote_volume_24h": 6716051.587819998,
+      "volume_24h": 1479.0136,
+      "quote_volume_24h": 6709082.824739998,
       "funding_rate": 6.25e-06,
-      "open_interest": 26639.4638,
+      "open_interest": 26616.1202,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-17T15:00:57.377688Z",
+      "ts": "2026-05-17T15:05:41.053497Z",
       "venue": "hyperliquid",
       "product": "wti",
       "symbol": "xyz:CL",
@@ -55,10 +55,10 @@
       "last_price": 101.995,
       "bid": 101.99,
       "ask": 102.0,
-      "volume_24h": 414474.6060000001,
-      "quote_volume_24h": 42104074.80077003,
+      "volume_24h": 403859.4810000003,
+      "quote_volume_24h": 41022665.94544998,
       "funding_rate": 6.25e-06,
-      "open_interest": 1585789.71,
+      "open_interest": 1586111.656,
       "data_age_sec": 0
     },
     {
@@ -74,7 +74,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 151557
+      "data_age_sec": 151841
     },
     {
       "ts": "2026-05-15T21:00:00Z",
@@ -89,7 +89,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 151257
+      "data_age_sec": 151541
     }
   ]
 }
