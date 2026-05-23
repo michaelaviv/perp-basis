@@ -1,8 +1,8 @@
 {
-  "ts": "2026-05-23T10:01:00.729925Z",
+  "ts": "2026-05-23T10:03:19.642492Z",
   "rows": [
     {
-      "ts": "2026-05-23T10:01:00.729925Z",
+      "ts": "2026-05-23T10:03:19.642492Z",
       "venue": "okx",
       "product": "gold",
       "symbol": "XAU-USDT-SWAP",
@@ -10,29 +10,29 @@
       "last_price": 4509.9,
       "bid": 4509.8,
       "ask": 4509.9,
-      "volume_24h": 27740775.0,
-      "quote_volume_24h": 27740.775,
+      "volume_24h": 27719133.0,
+      "quote_volume_24h": 27719.133,
       "funding_rate": 0.0,
-      "open_interest": 24383116.0,
+      "open_interest": 24383319.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-23T10:01:00.729925Z",
+      "ts": "2026-05-23T10:03:19.642492Z",
       "venue": "okx",
       "product": "wti",
       "symbol": "CL-USDT-SWAP",
       "mark_price": 98.78,
-      "last_price": 98.78,
+      "last_price": 98.79,
       "bid": 98.78,
       "ask": 98.79,
-      "volume_24h": 11931233.0,
-      "quote_volume_24h": 1193123.3,
+      "volume_24h": 11929888.0,
+      "quote_volume_24h": 1192988.8,
       "funding_rate": 0.0,
-      "open_interest": 2042728.0,
+      "open_interest": 2042727.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-23T10:01:00.729925Z",
+      "ts": "2026-05-23T10:03:19.642492Z",
       "venue": "hyperliquid",
       "product": "gold",
       "symbol": "xyz:GOLD",
@@ -47,18 +47,18 @@
       "data_age_sec": 0
     },
     {
-      "ts": "2026-05-23T10:01:00.729925Z",
+      "ts": "2026-05-23T10:03:19.642492Z",
       "venue": "hyperliquid",
       "product": "wti",
       "symbol": "xyz:CL",
-      "mark_price": 98.708,
-      "last_price": 98.734,
-      "bid": 98.733,
-      "ask": 98.736,
-      "volume_24h": 5493452.3889999995,
-      "quote_volume_24h": 532335422.787846,
+      "mark_price": 98.733,
+      "last_price": 98.756,
+      "bid": 98.751,
+      "ask": 98.762,
+      "volume_24h": 5493634.179999999,
+      "quote_volume_24h": 532353365.74133724,
       "funding_rate": 6.25e-06,
-      "open_interest": 2051411.8439999996,
+      "open_interest": 2051437.9519999996,
       "data_age_sec": 0
     },
     {
@@ -74,7 +74,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 46920
+      "data_age_sec": 47059
     },
     {
       "ts": "2026-05-22T20:59:00Z",
@@ -89,7 +89,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 46920
+      "data_age_sec": 47059
     }
   ]
 }
