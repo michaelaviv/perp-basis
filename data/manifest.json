@@ -1,5 +1,5 @@
 {
-  "updated": "2026-05-23T06:00:59.672221Z",
+  "updated": "2026-05-23T06:05:46.839304Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
@@ -100,7 +100,8 @@
     "snapshots/2026/05/23/055049.parquet",
     "snapshots/2026/05/23/055210.parquet",
     "snapshots/2026/05/23/055541.parquet",
-    "snapshots/2026/05/23/060058.parquet"
+    "snapshots/2026/05/23/060058.parquet",
+    "snapshots/2026/05/23/060544.parquet"
   ],
   "options_dates": [
     "2026-05-03",
