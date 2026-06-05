@@ -1,15 +1,15 @@
 {
-  "ts": "2026-06-05T01:07:10.004430Z",
+  "ts": "2026-06-05T02:06:23.920086Z",
   "rows": [
     {
-      "ts": "2026-06-05T01:07:10.004430Z",
+      "ts": "2026-06-05T02:06:23.920086Z",
       "venue": "ovx",
       "product": "wti",
       "expiry": "2026-07-05",
-      "underlying_px": 92.68000030517578,
+      "underlying_px": 93.05999755859375,
       "quotes": [
         {
-          "strike": 92.68000030517578,
+          "strike": 93.05999755859375,
           "lo_strike": null,
           "hi_strike": null,
           "mid_iv": 0.5979000091552734,
@@ -24,20 +24,20 @@
         }
       ],
       "total_volume_24h_usd": null,
-      "data_age_sec": 76030
+      "data_age_sec": 79583
     },
     {
-      "ts": "2026-06-05T01:07:10.004430Z",
+      "ts": "2026-06-05T02:06:23.920086Z",
       "venue": "polymarket",
       "product": "wti",
       "expiry": "2026-06-30",
-      "underlying_px": 92.68000030517578,
+      "underlying_px": 93.05999755859375,
       "quotes": [
         {
           "strike": 84.0,
           "lo_strike": 84.0,
           "hi_strike": null,
-          "mid_iv": 0.6663059888486021,
+          "mid_iv": 0.6906633098509108,
           "bid_px": 0.66,
           "ask_px": 0.7,
           "last_px": 0.68,
@@ -51,7 +51,7 @@
           "strike": 66.5,
           "lo_strike": 63.0,
           "hi_strike": 70.0,
-          "mid_iv": 0.5197906803436527,
+          "mid_iv": 0.528123863897758,
           "bid_px": 0.021,
           "ask_px": 0.022,
           "last_px": 0.022,
