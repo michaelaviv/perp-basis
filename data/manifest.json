@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-29T00:01:27.043617Z",
+  "updated": "2026-06-29T00:02:43.272964Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
@@ -54,7 +54,8 @@
   "count": 49,
   "intraday_date": "2026-06-29",
   "intraday_files": [
-    "snapshots/2026/06/29/000124.parquet"
+    "snapshots/2026/06/29/000124.parquet",
+    "snapshots/2026/06/29/000241.parquet"
   ],
   "options_dates": [
     "2026-05-03",
