@@ -56,7 +56,7 @@ jobs:
           git commit -m "snapshot ${ts}"
           # Use merge (not rebase) so the merge=ours driver is honoured.
           for i in 1 2 3; do
-            git pull --no-edit --strategy=ort -X ours && git push && exit 0
+            git pull --no-rebase --no-edit --strategy=ort -X ours && git push && exit 0
             echo "push attempt $i failed, retrying..."
             git merge --abort 2>/dev/null || true
             sleep 5
