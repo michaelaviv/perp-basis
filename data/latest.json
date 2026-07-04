@@ -1,8 +1,8 @@
 {
-  "ts": "2026-07-04T20:53:27.441561Z",
+  "ts": "2026-07-04T20:55:55.203823Z",
   "rows": [
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "binance",
       "product": "gold",
       "symbol": "XAUUSDT",
@@ -10,29 +10,29 @@
       "last_price": 4177.51,
       "bid": 4177.51,
       "ask": 4177.52,
-      "volume_24h": 21832.173,
-      "quote_volume_24h": 91189027.68,
+      "volume_24h": 21618.03,
+      "quote_volume_24h": 90293960.26,
       "funding_rate": 0.0,
-      "open_interest": 58120.181,
+      "open_interest": 58120.041,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "binance",
       "product": "wti",
       "symbol": "CLUSDT",
-      "mark_price": 68.75489736,
+      "mark_price": 68.75485413,
       "last_price": 68.75,
       "bid": 68.75,
       "ask": 68.76,
-      "volume_24h": 637312.27,
-      "quote_volume_24h": 43865910.1436,
+      "volume_24h": 634969.94,
+      "quote_volume_24h": 43705163.7939,
       "funding_rate": 0.0,
-      "open_interest": 1723802.27,
+      "open_interest": 1723586.59,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "okx",
       "product": "gold",
       "symbol": "XAU-USDT-SWAP",
@@ -40,14 +40,14 @@
       "last_price": 4178.2,
       "bid": 4178.2,
       "ask": 4178.3,
-      "volume_24h": 8001248.0,
-      "quote_volume_24h": 8001.248,
+      "volume_24h": 7979887.0,
+      "quote_volume_24h": 7979.887,
       "funding_rate": 0.0,
-      "open_interest": 21771351.0,
+      "open_interest": 21771254.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "okx",
       "product": "wti",
       "symbol": "CL-USDT-SWAP",
@@ -55,40 +55,40 @@
       "last_price": 68.84,
       "bid": 68.84,
       "ask": 68.85,
-      "volume_24h": 1226815.0,
-      "quote_volume_24h": 122681.5,
+      "volume_24h": 1220489.0,
+      "quote_volume_24h": 122048.9,
       "funding_rate": 0.0,
-      "open_interest": 4533201.0,
+      "open_interest": 4533168.0,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "hyperliquid",
       "product": "gold",
       "symbol": "xyz:GOLD",
-      "mark_price": 4172.2,
-      "last_price": 4172.25,
-      "bid": 4172.2,
-      "ask": 4172.3,
-      "volume_24h": 3846.5239,
-      "quote_volume_24h": 16079375.53027,
+      "mark_price": 4172.4,
+      "last_price": 4172.55,
+      "bid": 4172.5,
+      "ask": 4172.6,
+      "volume_24h": 3848.5884,
+      "quote_volume_24h": 16087989.03717,
       "funding_rate": 6.25e-06,
-      "open_interest": 33453.7088,
+      "open_interest": 33453.5798,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-07-04T20:53:27.441561Z",
+      "ts": "2026-07-04T20:55:55.203823Z",
       "venue": "hyperliquid",
       "product": "wti",
       "symbol": "xyz:CL",
-      "mark_price": 68.765,
-      "last_price": 68.764,
-      "bid": 68.764,
-      "ask": 68.765,
-      "volume_24h": 239727.2620000001,
-      "quote_volume_24h": 16511241.779426005,
+      "mark_price": 68.766,
+      "last_price": 68.763,
+      "bid": 68.763,
+      "ask": 68.764,
+      "volume_24h": 239728.7100000001,
+      "quote_volume_24h": 16511341.320738003,
       "funding_rate": 6.25e-06,
-      "open_interest": 2060852.3260000001,
+      "open_interest": 2060852.904,
       "data_age_sec": 0
     },
     {
@@ -104,7 +104,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 147327
+      "data_age_sec": 147475
     },
     {
       "ts": "2026-07-03T03:58:00Z",
@@ -119,7 +119,7 @@
       "quote_volume_24h": null,
       "funding_rate": null,
       "open_interest": null,
-      "data_age_sec": 147327
+      "data_age_sec": 147475
     }
   ]
 }
