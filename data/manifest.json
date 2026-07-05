@@ -1,5 +1,5 @@
 {
-  "updated": "2026-07-05T22:41:26.029448Z",
+  "updated": "2026-07-05T22:46:06.573649Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
@@ -366,7 +366,8 @@
     "snapshots/2026/07/05/223100.parquet",
     "snapshots/2026/07/05/223138.parquet",
     "snapshots/2026/07/05/223553.parquet",
-    "snapshots/2026/07/05/224123.parquet"
+    "snapshots/2026/07/05/224123.parquet",
+    "snapshots/2026/07/05/224604.parquet"
   ],
   "options_dates": [
     "2026-05-03",
@@ -450,6 +451,7 @@
     "options_snapshots/2026/07/05/200538.parquet",
     "options_snapshots/2026/07/05/204042.parquet",
     "options_snapshots/2026/07/05/212642.parquet",
-    "options_snapshots/2026/07/05/220317.parquet"
+    "options_snapshots/2026/07/05/220317.parquet",
+    "options_snapshots/2026/07/05/224048.parquet"
   ]
 }
