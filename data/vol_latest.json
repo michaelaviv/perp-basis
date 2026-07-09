@@ -1,8 +1,8 @@
 {
-  "ts": "2026-07-09T22:49:10.343948Z",
+  "ts": "2026-07-09T23:31:17.290375Z",
   "rows": [
     {
-      "ts": "2026-07-09T22:49:10.343948Z",
+      "ts": "2026-07-09T23:31:17.290375Z",
       "venue": "cboe_uso",
       "product": "wti",
       "expiry": "2026-08-07",
@@ -808,17 +808,27 @@
         }
       ],
       "total_volume_24h_usd": 441298.0,
-      "data_age_sec": 10255
+      "data_age_sec": 12782
     },
     {
-      "ts": "2026-07-09T22:49:10.343948Z",
+      "ts": "2026-07-09T23:31:17.290375Z",
+      "venue": "kalshi",
+      "product": "wti",
+      "expiry": "2026-07-13",
+      "underlying_px": 71.83000183105469,
+      "quotes": [],
+      "total_volume_24h_usd": null,
+      "data_age_sec": 0
+    },
+    {
+      "ts": "2026-07-09T23:31:17.290375Z",
       "venue": "ovx",
       "product": "wti",
       "expiry": "2026-08-08",
-      "underlying_px": 71.83000183105469,
+      "underlying_px": 71.81999969482422,
       "quotes": [
         {
-          "strike": 71.83000183105469,
+          "strike": 71.81999969482422,
           "lo_strike": null,
           "hi_strike": null,
           "mid_iv": 0.45990001678466796,
@@ -833,7 +843,7 @@
         }
       ],
       "total_volume_24h_usd": null,
-      "data_age_sec": 67750
+      "data_age_sec": 70277
     }
   ]
 }
