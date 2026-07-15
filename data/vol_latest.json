@@ -1,46 +1,32 @@
 {
-  "ts": "2026-07-15T12:11:05.217636Z",
+  "ts": "2026-07-15T12:49:50.048157Z",
   "rows": [
     {
-      "ts": "2026-07-15T12:11:05.217636Z",
+      "ts": "2026-07-15T12:49:50.048157Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-07-17",
-      "underlying_px": 79.62000274658203,
+      "underlying_px": 79.80999755859375,
       "quotes": [
         {
           "strike": 77.99,
           "lo_strike": 77.99,
           "hi_strike": null,
-          "mid_iv": 0.5526222861825452,
+          "mid_iv": 0.6169014217662335,
           "bid_px": 0.67,
           "ask_px": 0.68,
-          "last_px": 0.67,
+          "last_px": 0.68,
           "market_id": "KXWTIW-26JUL1714-T77.99",
           "raw_prob": 0.675,
-          "volume": 56233.89,
-          "open_interest": 18592.39,
-          "volume_24h_usd": 9437.661
-        },
-        {
-          "strike": 77.495,
-          "lo_strike": 77.0,
-          "hi_strike": 77.99,
-          "mid_iv": 0.2550474396372307,
-          "bid_px": 0.1,
-          "ask_px": 0.10999999999999999,
-          "last_px": 0.1,
-          "market_id": "KXWTIW-26JUL1714-B77.50",
-          "raw_prob": 0.105,
-          "volume": 17056.98,
-          "open_interest": 9758.95,
-          "volume_24h_usd": 824.7372
+          "volume": 56422.4,
+          "open_interest": 18733.78,
+          "volume_24h_usd": 9529.81875
         },
         {
           "strike": 75.495,
           "lo_strike": 75.0,
           "hi_strike": 75.99,
-          "mid_iv": 0.5011508870246183,
+          "mid_iv": 0.5604170774424071,
           "bid_px": 0.05,
           "ask_px": 0.06000000000000005,
           "last_px": 0.07,
@@ -48,13 +34,13 @@
           "raw_prob": 0.05500000000000003,
           "volume": 4730.11,
           "open_interest": 2823.06,
-          "volume_24h_usd": 23.86395000000001
+          "volume_24h_usd": 22.763950000000012
         },
         {
           "strike": 74.495,
           "lo_strike": 74.0,
           "hi_strike": 74.99,
-          "mid_iv": 0.5116923856759611,
+          "mid_iv": 0.5445515394191649,
           "bid_px": 0.03,
           "ask_px": 0.040000000000000036,
           "last_px": 0.03,
@@ -65,7 +51,7 @@
           "volume_24h_usd": 111.84145000000005
         }
       ],
-      "total_volume_24h_usd": 10398.1036,
+      "total_volume_24h_usd": 9664.42415,
       "data_age_sec": 0
     }
   ]
