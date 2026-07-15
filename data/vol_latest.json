@@ -1,71 +1,43 @@
 {
-  "ts": "2026-07-15T09:05:17.679454Z",
+  "ts": "2026-07-15T10:03:35.234052Z",
   "rows": [
     {
-      "ts": "2026-07-15T09:05:17.679454Z",
+      "ts": "2026-07-15T10:03:35.234052Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-07-17",
-      "underlying_px": 79.5999984741211,
+      "underlying_px": 80.12000274658203,
       "quotes": [
         {
           "strike": 77.99,
           "lo_strike": 77.99,
           "hi_strike": null,
-          "mid_iv": 0.7255469919045695,
-          "bid_px": 0.62,
-          "ask_px": 0.63,
-          "last_px": 0.64,
+          "mid_iv": 0.7368743305880815,
+          "bid_px": 0.66,
+          "ask_px": 0.67,
+          "last_px": 0.66,
           "market_id": "KXWTIW-26JUL1714-T77.99",
-          "raw_prob": 0.625,
-          "volume": 55465.74,
-          "open_interest": 18449.18,
-          "volume_24h_usd": 8302.26875
-        },
-        {
-          "strike": 77.495,
-          "lo_strike": 77.0,
-          "hi_strike": 77.99,
-          "mid_iv": 0.22945421885575012,
-          "bid_px": 0.09,
-          "ask_px": 0.10999999999999999,
-          "last_px": 0.11,
-          "market_id": "KXWTIW-26JUL1714-B77.50",
-          "raw_prob": 0.1,
-          "volume": 15444.85,
-          "open_interest": 8483.43,
-          "volume_24h_usd": 743.3290000000001
-        },
-        {
-          "strike": 75.495,
-          "lo_strike": 75.0,
-          "hi_strike": 75.99,
-          "mid_iv": 0.48236094259689627,
-          "bid_px": 0.05,
-          "ask_px": 0.06000000000000005,
-          "last_px": 0.07,
-          "market_id": "KXWTIW-26JUL1714-B75.50",
-          "raw_prob": 0.05500000000000003,
-          "volume": 4730.11,
-          "open_interest": 2823.06,
-          "volume_24h_usd": 23.86395000000001
+          "raw_prob": 0.665,
+          "volume": 55645.74,
+          "open_interest": 18629.18,
+          "volume_24h_usd": 8926.162
         },
         {
           "strike": 74.495,
           "lo_strike": 74.0,
           "hi_strike": 74.99,
-          "mid_iv": 0.494737739165721,
+          "mid_iv": 0.5812494131360353,
           "bid_px": 0.03,
           "ask_px": 0.040000000000000036,
-          "last_px": 0.05,
+          "last_px": 0.03,
           "market_id": "KXWTIW-26JUL1714-B74.50",
           "raw_prob": 0.03500000000000002,
-          "volume": 11967.44,
+          "volume": 11981.58,
           "open_interest": 5715.87,
-          "volume_24h_usd": 111.34655000000005
+          "volume_24h_usd": 111.84145000000005
         }
       ],
-      "total_volume_24h_usd": 9180.80825,
+      "total_volume_24h_usd": 9038.00345,
       "data_age_sec": 0
     }
   ]
