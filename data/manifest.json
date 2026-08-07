@@ -1,5 +1,5 @@
 {
-  "updated": "2026-08-06T22:35:06.436002Z",
+  "updated": "2026-08-07T00:20:41.554807Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
@@ -81,28 +81,8 @@
     "2026-08-05"
   ],
   "count": 78,
-  "intraday_date": "2026-08-06",
-  "intraday_files": [
-    "snapshots/2026/08/06/000318.parquet",
-    "snapshots/2026/08/06/004509.parquet",
-    "snapshots/2026/08/06/011924.parquet",
-    "snapshots/2026/08/06/020936.parquet",
-    "snapshots/2026/08/06/032213.parquet",
-    "snapshots/2026/08/06/043247.parquet",
-    "snapshots/2026/08/06/053536.parquet",
-    "snapshots/2026/08/06/063214.parquet",
-    "snapshots/2026/08/06/073014.parquet",
-    "snapshots/2026/08/06/082526.parquet",
-    "snapshots/2026/08/06/092753.parquet",
-    "snapshots/2026/08/06/102320.parquet",
-    "snapshots/2026/08/06/111547.parquet",
-    "snapshots/2026/08/06/120231.parquet",
-    "snapshots/2026/08/06/124701.parquet",
-    "snapshots/2026/08/06/132400.parquet",
-    "snapshots/2026/08/06/141511.parquet",
-    "snapshots/2026/08/06/150429.parquet",
-    "snapshots/2026/08/06/223503.parquet"
-  ],
+  "intraday_date": "2026-08-07",
+  "intraday_files": [],
   "options_dates": [
     "2026-05-03",
     "2026-05-04",
@@ -182,22 +162,6 @@
   ],
   "options_count": 75,
   "options_intraday_files": [
-    "options_snapshots/2026/08/06/000722.parquet",
-    "options_snapshots/2026/08/06/004949.parquet",
-    "options_snapshots/2026/08/06/013839.parquet",
-    "options_snapshots/2026/08/06/023804.parquet",
-    "options_snapshots/2026/08/06/035056.parquet",
-    "options_snapshots/2026/08/06/050755.parquet",
-    "options_snapshots/2026/08/06/061344.parquet",
-    "options_snapshots/2026/08/06/071736.parquet",
-    "options_snapshots/2026/08/06/080908.parquet",
-    "options_snapshots/2026/08/06/091942.parquet",
-    "options_snapshots/2026/08/06/101726.parquet",
-    "options_snapshots/2026/08/06/111003.parquet",
-    "options_snapshots/2026/08/06/120326.parquet",
-    "options_snapshots/2026/08/06/130112.parquet",
-    "options_snapshots/2026/08/06/140421.parquet",
-    "options_snapshots/2026/08/06/150613.parquet",
-    "options_snapshots/2026/08/06/221129.parquet"
+    "options_snapshots/2026/08/07/002039.parquet"
   ]
 }
