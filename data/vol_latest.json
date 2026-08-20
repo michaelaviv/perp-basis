@@ -1,25 +1,25 @@
 {
-  "ts": "2026-08-20T08:35:50.510683Z",
+  "ts": "2026-08-20T08:56:24.744518Z",
   "rows": [
     {
-      "ts": "2026-08-20T08:35:50.510683Z",
+      "ts": "2026-08-20T08:56:24.744518Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-08-21",
-      "underlying_px": 85.9800033569336,
+      "underlying_px": 86.33999633789062,
       "quotes": [],
       "total_volume_24h_usd": null,
       "data_age_sec": 0
     },
     {
-      "ts": "2026-08-20T08:35:50.510683Z",
+      "ts": "2026-08-20T08:56:24.744518Z",
       "venue": "ovx",
       "product": "wti",
       "expiry": "2026-09-19",
-      "underlying_px": 85.9800033569336,
+      "underlying_px": 86.33999633789062,
       "quotes": [
         {
-          "strike": 85.9800033569336,
+          "strike": 86.33999633789062,
           "lo_strike": null,
           "hi_strike": null,
           "mid_iv": 0.47689998626708985,
@@ -34,7 +34,7 @@
         }
       ],
       "total_volume_24h_usd": null,
-      "data_age_sec": 102950
+      "data_age_sec": 104184
     }
   ]
 }
