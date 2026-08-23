@@ -1,8 +1,8 @@
 {
-  "ts": "2026-08-23T21:30:31.184544Z",
+  "ts": "2026-08-23T21:48:03.103029Z",
   "rows": [
     {
-      "ts": "2026-08-23T21:30:31.184544Z",
+      "ts": "2026-08-23T21:48:03.103029Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-08-28",
@@ -12,7 +12,7 @@
           "strike": 88.495,
           "lo_strike": 88.0,
           "hi_strike": 88.99,
-          "mid_iv": 0.06532377167809673,
+          "mid_iv": 0.06540550171769179,
           "bid_px": 0.07,
           "ask_px": 0.07999999999999996,
           "last_px": 0.08,
@@ -20,13 +20,13 @@
           "raw_prob": 0.07499999999999998,
           "volume": 2749.14,
           "open_interest": 2729.14,
-          "volume_24h_usd": 85.25549999999998
+          "volume_24h_usd": 86.13599999999998
         },
         {
           "strike": 87.495,
           "lo_strike": 87.0,
           "hi_strike": 87.99,
-          "mid_iv": 0.4298709351529386,
+          "mid_iv": 0.4304087693663725,
           "bid_px": 0.08,
           "ask_px": 0.09999999999999998,
           "last_px": 0.1,
@@ -34,13 +34,13 @@
           "raw_prob": 0.09,
           "volume": 9985.2,
           "open_interest": 9970.8,
-          "volume_24h_usd": 306.5175
+          "volume_24h_usd": 305.6715
         },
         {
           "strike": 86.495,
           "lo_strike": 86.0,
           "hi_strike": 86.99,
-          "mid_iv": 0.33882002498794594,
+          "mid_iv": 0.3392439406094884,
           "bid_px": 0.11,
           "ask_px": 0.12,
           "last_px": 0.12,
@@ -48,13 +48,13 @@
           "raw_prob": 0.115,
           "volume": 4900.13,
           "open_interest": 4576.73,
-          "volume_24h_usd": 216.22875000000002
+          "volume_24h_usd": 216.2598
         },
         {
           "strike": 85.495,
           "lo_strike": 85.0,
           "hi_strike": 85.99,
-          "mid_iv": 0.0862651403037228,
+          "mid_iv": 0.08637307117306729,
           "bid_px": 0.09,
           "ask_px": 0.10999999999999999,
           "last_px": 0.1,
@@ -62,10 +62,10 @@
           "raw_prob": 0.1,
           "volume": 2092.03,
           "open_interest": 1811.41,
-          "volume_24h_usd": 73.527
+          "volume_24h_usd": 70.705
         }
       ],
-      "total_volume_24h_usd": 681.52875,
+      "total_volume_24h_usd": 678.7723,
       "data_age_sec": 0
     }
   ]
