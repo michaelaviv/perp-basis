@@ -1,8 +1,8 @@
 {
-  "ts": "2026-08-23T20:06:09.555188Z",
+  "ts": "2026-08-23T20:31:57.969293Z",
   "rows": [
     {
-      "ts": "2026-08-23T20:06:09.555188Z",
+      "ts": "2026-08-23T20:31:57.969293Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-08-28",
@@ -12,7 +12,7 @@
           "strike": 88.495,
           "lo_strike": 88.0,
           "hi_strike": 88.99,
-          "mid_iv": 0.0649347423040021,
+          "mid_iv": 0.065053012464291,
           "bid_px": 0.07,
           "ask_px": 0.07999999999999996,
           "last_px": 0.08,
@@ -26,7 +26,7 @@
           "strike": 87.495,
           "lo_strike": 87.0,
           "hi_strike": 87.99,
-          "mid_iv": 0.40450030017063376,
+          "mid_iv": 0.405237044432415,
           "bid_px": 0.08,
           "ask_px": 0.10999999999999999,
           "last_px": 0.1,
@@ -34,13 +34,13 @@
           "raw_prob": 0.095,
           "volume": 9985.2,
           "open_interest": 9970.8,
-          "volume_24h_usd": 447.80625
+          "volume_24h_usd": 406.38625
         },
         {
           "strike": 86.495,
           "lo_strike": 86.0,
           "hi_strike": 86.99,
-          "mid_iv": 0.36995821523661876,
+          "mid_iv": 0.37063204561778335,
           "bid_px": 0.09,
           "ask_px": 0.12,
           "last_px": 0.09,
@@ -54,18 +54,18 @@
           "strike": 85.495,
           "lo_strike": 85.0,
           "hi_strike": 85.99,
-          "mid_iv": 0.08575139680678324,
+          "mid_iv": 0.08354189898864604,
           "bid_px": 0.09,
-          "ask_px": 0.10999999999999999,
-          "last_px": 0.1,
+          "ask_px": 0.09999999999999998,
+          "last_px": 0.11,
           "market_id": "KXWTIW-26AUG2814-B85.50",
-          "raw_prob": 0.1,
-          "volume": 2049.03,
-          "open_interest": 1768.41,
-          "volume_24h_usd": 68.287
+          "raw_prob": 0.095,
+          "volume": 2072.03,
+          "open_interest": 1791.41,
+          "volume_24h_usd": 67.95065
         }
       ],
-      "total_volume_24h_usd": 815.3648499999999,
+      "total_volume_24h_usd": 773.6085,
       "data_age_sec": 0
     }
   ]
