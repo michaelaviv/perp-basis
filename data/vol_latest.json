@@ -1,60 +1,32 @@
 {
-  "ts": "2026-08-25T09:53:56.899609Z",
+  "ts": "2026-08-25T10:11:27.000847Z",
   "rows": [
     {
-      "ts": "2026-08-25T09:53:56.899609Z",
+      "ts": "2026-08-25T10:11:27.000847Z",
       "venue": "kalshi",
       "product": "wti",
       "expiry": "2026-08-28",
-      "underlying_px": 82.33000183105469,
+      "underlying_px": 82.2300033569336,
       "quotes": [
-        {
-          "strike": 75.0,
-          "lo_strike": null,
-          "hi_strike": 75.0,
-          "mid_iv": 0.529286637819019,
-          "bid_px": 0.03,
-          "ask_px": 0.040000000000000036,
-          "last_px": 0.03,
-          "market_id": "KXWTIW-26AUG2814-T75.00",
-          "raw_prob": 0.03500000000000002,
-          "volume": 6311.83,
-          "open_interest": 3399.05,
-          "volume_24h_usd": 38.78665000000002
-        },
-        {
-          "strike": 87.495,
-          "lo_strike": 87.0,
-          "hi_strike": 87.99,
-          "mid_iv": 0.4210122518689153,
-          "bid_px": 0.03,
-          "ask_px": 0.040000000000000036,
-          "last_px": 0.04,
-          "market_id": "KXWTIW-26AUG2814-B87.50",
-          "raw_prob": 0.03500000000000002,
-          "volume": 11535.4,
-          "open_interest": 10979.52,
-          "volume_24h_usd": 50.16480000000002
-        },
         {
           "strike": 84.495,
           "lo_strike": 84.0,
           "hi_strike": 84.99,
-          "mid_iv": 0.1933281046488964,
+          "mid_iv": 0.21579148174967497,
           "bid_px": 0.09,
           "ask_px": 0.09999999999999998,
           "last_px": 0.1,
           "market_id": "KXWTIW-26AUG2814-B84.50",
           "raw_prob": 0.095,
-          "volume": 4743.8,
-          "open_interest": 3371.67,
-          "volume_24h_usd": 240.98175
+          "volume": 4756.11,
+          "open_interest": 3381.07,
+          "volume_24h_usd": 242.42765
         },
         {
           "strike": 83.495,
           "lo_strike": 83.0,
           "hi_strike": 83.99,
-          "mid_iv": 0.06792385865053227,
+          "mid_iv": 0.07875642202678991,
           "bid_px": 0.1,
           "ask_px": 0.10999999999999999,
           "last_px": 0.1,
@@ -68,7 +40,7 @@
           "strike": 82.495,
           "lo_strike": 82.0,
           "hi_strike": 82.99,
-          "mid_iv": 0.5232304743614954,
+          "mid_iv": 0.5232029577451558,
           "bid_px": 0.09,
           "ask_px": 0.09999999999999998,
           "last_px": 0.09,
@@ -82,72 +54,33 @@
           "strike": 80.495,
           "lo_strike": 80.0,
           "hi_strike": 80.99,
-          "mid_iv": 0.13948007321589612,
-          "bid_px": 0.09,
+          "mid_iv": 0.12335714472984119,
+          "bid_px": 0.08,
           "ask_px": 0.09999999999999998,
           "last_px": 0.06,
           "market_id": "KXWTIW-26AUG2814-B80.50",
-          "raw_prob": 0.095,
+          "raw_prob": 0.09,
           "volume": 399.62,
           "open_interest": 399.62,
-          "volume_24h_usd": 21.9089
+          "volume_24h_usd": 20.7558
         },
         {
           "strike": 79.495,
           "lo_strike": 79.0,
           "hi_strike": 79.99,
-          "mid_iv": 0.2558028704307309,
-          "bid_px": 0.07,
+          "mid_iv": 0.2259913298155437,
+          "bid_px": 0.06,
           "ask_px": 0.07999999999999996,
           "last_px": 0.04,
           "market_id": "KXWTIW-26AUG2814-B79.50",
-          "raw_prob": 0.07499999999999998,
+          "raw_prob": 0.06999999999999998,
           "volume": 975.68,
           "open_interest": 975.68,
-          "volume_24h_usd": 65.52599999999998
-        },
-        {
-          "strike": 78.495,
-          "lo_strike": 78.0,
-          "hi_strike": 78.99,
-          "mid_iv": 0.34282348736954993,
-          "bid_px": 0.05,
-          "ask_px": 0.06000000000000005,
-          "last_px": 0.02,
-          "market_id": "KXWTIW-26AUG2814-B78.50",
-          "raw_prob": 0.05500000000000003,
-          "volume": 528.58,
-          "open_interest": 528.58,
-          "volume_24h_usd": 22.85690000000001
+          "volume_24h_usd": 61.15759999999998
         }
       ],
-      "total_volume_24h_usd": 863.9242,
+      "total_volume_24h_usd": 748.04025,
       "data_age_sec": 0
-    },
-    {
-      "ts": "2026-08-25T09:53:56.899609Z",
-      "venue": "ovx",
-      "product": "wti",
-      "expiry": "2026-09-24",
-      "underlying_px": 82.33000183105469,
-      "quotes": [
-        {
-          "strike": 82.33000183105469,
-          "lo_strike": null,
-          "hi_strike": null,
-          "mid_iv": 0.46740001678466797,
-          "bid_px": null,
-          "ask_px": null,
-          "last_px": 46.7400016784668,
-          "market_id": "^OVX",
-          "raw_prob": null,
-          "volume": null,
-          "open_interest": null,
-          "volume_24h_usd": null
-        }
-      ],
-      "total_volume_24h_usd": null,
-      "data_age_sec": 107636
     }
   ]
 }
