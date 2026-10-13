@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-12T22:56:29.428399Z",
+  "updated": "2026-10-13T01:54:37.341179Z",
   "dates": [
     "2026-04-30",
     "2026-05-01",
@@ -140,13 +140,8 @@
     "2026-10-11"
   ],
   "count": 137,
-  "intraday_date": "2026-10-12",
-  "intraday_files": [
-    "snapshots/2026/10/12/004749.parquet",
-    "snapshots/2026/10/12/063838.parquet",
-    "snapshots/2026/10/12/160734.parquet",
-    "snapshots/2026/10/12/225627.parquet"
-  ],
+  "intraday_date": "2026-10-13",
+  "intraday_files": [],
   "options_dates": [
     "2026-05-03",
     "2026-05-04",
@@ -285,8 +280,6 @@
   ],
   "options_count": 134,
   "options_intraday_files": [
-    "options_snapshots/2026/10/12/022941.parquet",
-    "options_snapshots/2026/10/12/094445.parquet",
-    "options_snapshots/2026/10/12/194146.parquet"
+    "options_snapshots/2026/10/13/015435.parquet"
   ]
 }
